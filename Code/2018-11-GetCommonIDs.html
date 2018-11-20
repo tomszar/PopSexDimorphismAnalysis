@@ -315,12 +315,12 @@ $(document).ready(function () {
 <h2>Preliminares</h2>
 <p>Loading libraries</p>
 <pre class="r"><code>library(tidyverse)</code></pre>
-<pre><code>## ── Attaching packages ──────────────────────────────────────────────────────────────────────────────────────────── tidyverse 1.2.1 ──</code></pre>
+<pre><code>## ── Attaching packages ────────────────────────────────────────────────────────────────────────────── tidyverse 1.2.1 ──</code></pre>
 <pre><code>## ✔ ggplot2 3.0.0     ✔ purrr   0.2.5
 ## ✔ tibble  1.4.2     ✔ dplyr   0.7.7
 ## ✔ tidyr   0.8.1     ✔ stringr 1.3.1
 ## ✔ readr   1.1.1     ✔ forcats 0.3.0</code></pre>
-<pre><code>## ── Conflicts ─────────────────────────────────────────────────────────────────────────────────────────────── tidyverse_conflicts() ──
+<pre><code>## ── Conflicts ───────────────────────────────────────────────────────────────────────────────── tidyverse_conflicts() ──
 ## ✖ dplyr::filter() masks stats::filter()
 ## ✖ dplyr::lag()    masks stats::lag()</code></pre>
 <p>Setting folders, and loading databases, getting common set of IDs and saving object</p>
@@ -330,6 +330,10 @@ path &lt;- getwd()
 #Reading covariates
 setwd(paste(path, &quot;/DataBases&quot;, sep = &quot;&quot;))
 covs &lt;- read_csv(&quot;Covariates.csv&quot;, col_types = cols(ID = col_character() ) )
+#Remove NAs in covs
+covs &lt;- na.omit(covs)
+#Keep only Male/Female individuals
+covs &lt;- covs %&gt;% filter(Sex == &quot;Female&quot; | Sex == &quot;Male&quot;)
 
 #Reading face PCA
 setwd(paste(path, &quot;/DataBases/FacePCA&quot;, sep = &quot;&quot;))

@@ -23,6 +23,10 @@ path <- getwd()
 #Reading covariates
 setwd(paste(path, "/DataBases", sep = ""))
 covs <- read_csv("Covariates.csv", col_types = cols(ID = col_character() ) )
+#Remove NAs in covs
+covs <- na.omit(covs)
+#Keep only Male/Female individuals
+covs <- covs %>% filter(Sex == "Female" | Sex == "Male")
 
 #Reading face PCA
 setwd(paste(path, "/DataBases/FacePCA", sep = ""))
