@@ -1,4 +1,4 @@
-run_vector_change <- function(y.mat, covs, x.mat.red, x.mat.full, permute=999){
+run_vector_change <- function(y.mat, covs, x.mat.red, x.mat.full, permute=9999){
   #
   # This script will run an analysis to test two-state phenotypic changes across groups.
   # It will estimate the necessary parameters and run a permutation procedure to determine statistical significance
@@ -13,7 +13,7 @@ run_vector_change <- function(y.mat, covs, x.mat.red, x.mat.full, permute=999){
   #   x.mat.red  = X matrix to solve regression, without the interaction term
   #   x.mat.full = X matrix to solve regression, with interaction term of interest in the last columns.
   #                For both X matrices, make sure that the first column contains the two state condition, while groups are next
-  #   permute = number of permutations to determine statistical significance (default 999)
+  #   permute = number of permutations to determine statistical significance (default 9999)
   
   # 1. Setting data as matrices and setting general variables
   y.mat      <- as.matrix(y.mat)
@@ -246,27 +246,35 @@ pairwise_pvals <- function(out.mat, angle = 1){
   
   diff_table  <- matrix(0, nrow = k, ncol = k)
   angle_table <- matrix(0, nrow = k, ncol = k)
-  pvals       <- matrix(0, nrow = 1, ncol = n_comparisons)
-  col = k + 1
-  
-  for (i in 1:n_comparisons){
-    pval <- sum(out.mat[1,col] < out.mat[2:rows,col])/rows
-    col  <- col +1
-    pvals[1,i] <- pval
-  }
-  
-  diff_table[lower.tri(diff_table)] <- pvals
-  diff_table <- as.matrix(Matrix::forceSymmetric(diff_table, uplo="L"))
   
   pvals <- matrix(0, nrow = 1, ncol = n_comparisons)
+  vals  <- matrix(0, nrow = 1, ncol = n_comparisons)
+  col   <- k + 1
   for (i in 1:n_comparisons){
     pval <- sum(out.mat[1,col] < out.mat[2:rows,col])/rows
-    col  <- col +1
+    vals[1,i]  <- out.mat[1,col]
     pvals[1,i] <- pval
+    col  <- col +1
   }
+  diff_table[lower.tri(diff_table)] <- pvals
+  diff_table <- as.matrix(Matrix::forceSymmetric(diff_table, uplo="L"))
+  diff_table[lower.tri(diff_table)] <- vals
   
+  pvals <- matrix(0, nrow = 1, ncol = n_comparisons)
+  vals  <- matrix(0, nrow = 1, ncol = n_comparisons)
+  for (i in 1:n_comparisons){
+    pval <- sum(out.mat[1,col] < out.mat[2:rows,col])/rows
+    vals[1,i]  <- out.mat[1,col]
+    pvals[1,i] <- pval
+    col  <- col +1
+  }
   angle_table[lower.tri(angle_table)] <- pvals
   angle_table <- as.matrix(Matrix::forceSymmetric(angle_table, uplo="L"))
+  angle_table[lower.tri(angle_table)] <- vals
+  
+  
+  diag(angle_table) <- NA
+  diag(diff_table) <- NA
   
   if (angle == 1){
     return(angle_table)
