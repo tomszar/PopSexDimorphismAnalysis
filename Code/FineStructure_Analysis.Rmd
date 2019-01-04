@@ -1,0 +1,47 @@
+---
+title: FineStructure
+output:
+  html_document: default
+---
+
+## Preliminaries
+
+Load libraries
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(XML)
+library(ape)
+source("FinestructureLibrary.R") # read in the R functions, which also calls the needed packages
+```
+
+## Databases
+
+```{r databases, warning=FALSE, message=FALSE}
+setwd('..')
+path <- getwd()
+setwd(paste(path, "/DataBases/Genotypes/FineStructure", sep = ""))
+
+treexml <- xmlTreeParse("total_fs_linked.greedy_outputfile.xml") ## read the tree as xml format
+ttree   <- extractTree(treexml) ## extract the tree into ape's phylo format
+## Will will instead remove "perfect" node labels
+ttree$node.label[ttree$node.label=="1"] <- ""
+ttree$node.label[ttree$node.label!=""] <- format(as.numeric(ttree$node.label[ttree$node.label!=""]),digits=2)
+tdend<-myapetodend(ttree,factor=1) # convert to dendrogram format
+#Cut
+tdend_cut <- cut(tdend, h = 8)$upper
+tdend_cut_low <- cut(tdend, h = 8)$lower
+plot(tdend_cut)
+
+```
+
+Creating clustering database
+```{r}
+fs_clusters <- as.data.frame(matrix(NA, nrow = length(labels(tdend)), ncol = 2))
+colnames(fs_clusters) <- c("ID", "cluster")
+fs_clusters$ID <- labels(tdend)
+
+for(i in 1:7){
+  fs_clusters$cluster[fs_clusters$ID %in% labels(tdend_cut_low[[i]])] <- i
+}
+```
+

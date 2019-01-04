@@ -1,0 +1,62 @@
+---
+title: Generating Faces
+output:
+  html_document: default
+---
+
+In this script we will generate the faces for a series of figures. This script is non-reproducible because with the data associated, it is possible to generate the faces of the participants in this study.
+
+## Preliminaries
+
+Load libraries
+
+```{r libraries}
+library(tidyverse)
+```
+
+Load databases
+
+```{r databases, message=FALSE}
+setwd('..')
+path <- getwd()
+setwd(paste(path, "/DataBases/FacePCA", sep = ""))
+
+means  <- read_csv("means.txt", col_names = FALSE)
+scores <- read_csv("scores.csv", col_names = FALSE)
+eigenvec <- read_csv("eigenvectors.csv", col_names = FALSE)
+```
+
+## Faces for PCs
+
+Here we will generate the face shape of the projected faces on different axes of the face shape PCA.
+
+```{r pc landmarks}
+npcs   <- ncol(scores)
+nfaces <- 4 
+PCs <- matrix(0, nrow = nfaces * 2, ncol = npcs)
+sds <- apply(scores, 2, function(x) sd(x))
+
+l <- 1
+for(i in 1:4){
+  PCs[l,i] <- sds[i] * 3
+  l <- l +1
+  PCs[l,i] <- -(sds[i] * 3)
+  l <- l +1
+}
+
+new_means <- matrix(0, nrow = nfaces * 2, ncol = dim(eigenvec)[1])
+
+for(i in 1:nrow(new_means)){
+  new_means[i,] <- t(as.matrix(means))
+}
+
+PC_landmarks <- (PCs %*% t(as.matrix(eigenvec)) ) + new_means
+
+#Saving dataset
+setwd(paste(path, "/Results/Landmarks", sep = ""))
+write_csv(as.data.frame(PC_landmarks), "PC_landmarks.csv", col_names = FALSE)
+
+```
+
+
+
