@@ -1,0 +1,141 @@
+---
+title: Generating Faces
+output:
+  html_document: default
+---
+
+In this script we will generate the faces for a series of figures. This script is non-reproducible due to privacy reasons.
+
+## Preliminaries
+
+Load libraries
+
+```{r libraries}
+library(tidyverse)
+```
+
+Load databases
+
+```{r databases, message=FALSE}
+setwd('..')
+path <- getwd()
+setwd(paste(path, "/DataBases/FacePCA", sep = ""))
+
+means  <- read_csv("means.txt", col_names = FALSE)
+scores <- read_csv("scores.csv", col_names = FALSE)
+eigenvec <- read_csv("eigenvectors.csv", col_names = FALSE)
+
+#Reading tot_samples database
+setwd(paste(path, "/Results", sep = ""))
+tot_samples <- read_csv("tot_samples.csv")
+tot_samples <- tot_samples %>% mutate(Sex = as.factor(Sex))
+```
+
+## Faces for PCs
+
+Here we will generate the face shape of the projected faces on different axes of the face shape PCA.
+
+```{r pc landmarks}
+npcs   <- ncol(scores)
+nfaces <- 4 
+PCs <- matrix(0, nrow = nfaces * 2, ncol = npcs)
+sds <- apply(scores, 2, function(x) sd(x))
+
+l <- 1
+for(i in 1:4){
+  PCs[l,i] <- sds[i] * 3
+  l <- l +1
+  PCs[l,i] <- -(sds[i] * 3)
+  l <- l +1
+}
+
+new_means <- matrix(0, nrow = nfaces * 2, ncol = dim(eigenvec)[1])
+
+for(i in 1:nrow(new_means)){
+  new_means[i,] <- t(as.matrix(means))
+}
+
+PC_landmarks <- (PCs %*% t(as.matrix(eigenvec)) ) + new_means
+
+#Saving dataset
+setwd(paste(path, "/Results/Landmarks", sep = ""))
+write_csv(as.data.frame(PC_landmarks), "PC_landmarks.csv", col_names = FALSE)
+
+```
+
+## Sex dimorphism
+
+We'll generate the faces of males and females for the 3 final branches, and the 11 initial leaves.
+
+```{r sex dimorphism}
+#Define functions
+get_landmarks <- function(dat, type = "non-allo", ex = 1){
+  #
+  #
+  
+  if(type == "non-allo"){
+    fit <- lm(as.matrix(select(dat, starts_with("PC"))) ~ dat$Age + dat$BMI + dat$Sex + dat$Height)
+    coeff1  <- fit$coefficients[1,] *  ex
+    coeff2  <- ( fit$coefficients[1,] + fit$coefficients[4,] ) * ex
+  } else if(type == "total"){
+    fit <- lm(as.matrix(select(dat, starts_with("PC"))) ~ dat$Age + dat$BMI + dat$Sex )
+    coeff1 <- fit$coefficients[1,] * ex
+    coeff2 <- ( fit$coefficients[1,] + fit$coefficients[4,] ) * ex
+  } else if(type == "allo"){
+    fit <- lm(as.matrix(select(dat, starts_with("PC"))) ~ dat$Age + dat$BMI + dat$Sex + dat$Height)
+    #Get difference by sex
+    mean_fem  <- dat %>% filter(Sex == "Female") %>% select(Sex, Height) %>% summarise(mean(Height))
+    mean_male <- dat %>% filter(Sex == "Male") %>% select(Sex, Height) %>% summarise(mean(Height))
+    diff       <- as.numeric(mean_male - mean_fem)
+    coeff1 <- ( fit$coefficients[1,] + (fit$coefficients[5,] * as.numeric(mean_fem)) ) * ex
+    coeff2 <- ( fit$coefficients[1,] + (fit$coefficients[5,] * as.numeric(mean_male)) ) * ex
+  }
+  
+  coeffs <- rbind(coeff1, coeff2)
+
+  new_means <- matrix(0, nrow = nrow(coeffs), ncol = dim(eigenvec)[1])
+  
+  for(i in 1:nrow(new_means)){
+    new_means[i,] <- t(as.matrix(means))
+  }
+  
+  landmarks <- (as.matrix(coeffs) %*% t(as.matrix(eigenvec)) ) + new_means
+  
+  return(landmarks)
+}
+
+ngroups <- length(levels(as.factor(tot_samples$cluster_final)))
+landmark_set <- matrix(0, nrow = ngroups * 3 * 2, ncol = dim(eigenvec)[1])
+row = 1
+for( i in 1:ngroups){
+  dat <- tot_samples %>% filter(cluster_final == i)
+  dat[,3:6] <- scale(dat[,3:6])
+  lands_tot  <- get_landmarks(dat, "total", ex = 1.5)
+  lands_non  <- get_landmarks(dat, "non-allo", ex = 1.5)
+  lands_allo <- get_landmarks(dat, "allo", ex = 1.5)
+  landmark_set[row,] <- lands_tot[1,]
+  row = row + 1
+  landmark_set[row,] <- lands_tot[2,]
+  row = row + 1
+  landmark_set[row,] <- lands_non[1,]
+  row = row + 1
+  landmark_set[row,] <- lands_non[2,]
+  row = row + 1
+  landmark_set[row,] <- lands_allo[1,]
+  row = row + 1
+  landmark_set[row,] <- lands_allo[2,]
+  row = row + 1
+
+}
+
+
+#Saving dataset
+setwd(paste(path, "/Results/Landmarks", sep = ""))
+write_csv(as.data.frame(landmark_set), "sex_decomp_landmarks.csv", col_names = FALSE)
+#write_csv(as.data.frame(sex_3b_landmarks), "sex_3b_landmarks.csv", col_names = FALSE)
+#write_csv(as.data.frame(sex_11l_landmarks), "sex_11l_landmarks.csv", col_names = FALSE)
+```
+
+
+
+

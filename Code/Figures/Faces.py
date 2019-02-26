@@ -57,7 +57,7 @@ class FaceShape(object):
 		#Import libraries
 		import numpy as np
 		
-		diff = self.landmarks - faceshape.landmarks
+		diff = faceshape.landmarks - self.landmarks
 		self.get_normals()
 		normal_displacement = np.squeeze(np.array(np.sum(diff * self.normals, axis = 1)))
 		return normal_displacement
@@ -159,6 +159,10 @@ class FaceShape(object):
 		mesh.scene.camera.view_up  = [-0.05, 1, 0.5]
 
 		mlab.show()
+
+	def save_obj(self):
+		pass
+
 	
 def get_vertex_normals(landmarks, facets):
 	'''

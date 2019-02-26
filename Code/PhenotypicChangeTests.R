@@ -338,3 +338,69 @@ get_sex_vectors <- function(y.mat, covs, x.mat.full){
   
   return(obs.ls.full)
 }
+
+get_manova <- function(y.mat, covs, x.mat.red, x.mat.full, permute=9999){
+  #
+  # This function will generate a Manova test, using Wilk's lambda, between the full and reduced matrices
+  # Usage:
+  #   y.mat = Y matrix to solve regression
+  #   covs  = Covariates to control for during the parameter estimation, should contain the intercept as well.
+  #           Make sure that all numeric covariates are scaled, so zero is the mean 
+  #   x.mat.red  = X matrix to solve regression, without the interaction term
+  #   x.mat.full = X matrix to solve regression, with interaction term of interest in the last columns.
+  #                For both X matrices, make sure that the first column contains the two state condition, while groups are next
+  #
+  
+  # 1. Setting data as matrices and setting general variables
+  y.mat      <- as.matrix(y.mat)
+  covs       <- as.matrix(covs)
+  ncovs      <- ncol(covs) #number of covariates
+  ngroups    <- ncol(x.mat.red) #number of groups
+  x.mat.red  <- cbind(covs, as.matrix(x.mat.red)) # Full X matrix
+  x.mat.full <- cbind(covs, as.matrix(x.mat.full)) # Reduced X matrix
+  
+  # 2. Estimate parameters for full and reduced matrices
+  b.mat.full <- solve((t(x.mat.full) %*% x.mat.full)) %*% (t(x.mat.full) %*% y.mat)
+  b.mat.red  <- solve((t(x.mat.red) %*% x.mat.red)) %*% (t(x.mat.red) %*% y.mat)
+  
+  # 3. Estimate parameters for Manova
+  hache  <- ( t(b.mat.full) %*% t(x.mat.full) %*% y.mat ) -  ( t(b.mat.red) %*% t(x.mat.red) %*% y.mat )
+  e.full <- ( t(y.mat) %*% y.mat ) - ( t(b.mat.full) %*% t(x.mat.full) %*% y.mat )
+  e.red  <- ( t(y.mat) %*% y.mat ) - ( t(b.mat.red) %*% t(x.mat.red) %*% y.mat )
+  lambda <- det(e.full) / det(e.red)
+  
+  # 4. Permutation for p-value by residual randomization
+  y.hat <- x.mat.red %*% b.mat.red     # Predicted values from reduced model
+  y.res <- y.mat - y.hat               # Resdiuals of reduced mode (these are the permuted units)
+  
+  # PERMUTATION PROCEDURE
+  # Need to set-up distributions to be generated
+  dist.lambda     <- matrix(0, nrow = (permute + 1), ncol = 1)
+  dist.lambda[1,] <- lambda # Observed values are first random values
+  
+  # Create an array from 1 to number of object in data set
+  # This will be randomized later
+  line <- array(1:(length(x.mat.full[,1])),dim=c(length(x.mat.full[,1])))
+  
+  for (i in 1:permute){
+    line.rand  <- sample(line, replace=FALSE)
+    y.res.temp <- cbind(line.rand, y.res)
+    z <- (order(line.rand))
+    y.res.temp2 <- as.matrix(y.res.temp[z,])
+    y.res.rand  <- y.res.temp2[,-1]  # Rows of residuals are now randomized
+    
+    # Create random values
+    y.rand <- y.hat + y.res.rand
+    
+    # Estimate parameters
+    b.mat.rand <- solve((t(x.mat.full)%*%x.mat.full))%*%(t(x.mat.full)%*%y.rand)
+    
+    hache.rand  <- ( t(b.mat.rand) %*% t(x.mat.full) %*% y.rand ) -  ( t(b.mat.red) %*% t(x.mat.red) %*% y.mat )
+    e.full.rand <- ( t(y.mat) %*% y.mat ) - ( t(b.mat.rand) %*% t(x.mat.full) %*% y.mat )
+    
+    lambda.rand <- det(e.full.rand) / det(e.full.rand + hache.rand)
+    dist.lambda[i+1,] <- lambda.rand
+  }
+  
+  return(dist.lambda)
+}
