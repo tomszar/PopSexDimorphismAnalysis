@@ -223,5 +223,5 @@ def get_facet_normals(landmarks, facets):
 	Fnormals = np.cross(e0,e1)
 	
 	# make unit length
-	Fnormals/=np.atleast_2d(np.linalg.norm(Fnormals,axis=0))
+	Fnormals = (Fnormals.T / np.atleast_2d(np.linalg.norm(Fnormals,axis=1))).T
 	return Fnormals
