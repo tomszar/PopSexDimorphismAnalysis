@@ -29,15 +29,13 @@ covs <- na.omit(covs)
 #Keep only Male/Female individuals
 covs <- covs %>% filter(Sex == "Female" | Sex == "Male")
 
-#Reading face PCA
-setwd(paste(path, "/DataBases/FacePCA", sep = ""))
-face_ids <- read_csv("landmark_ids.txt", col_names = FALSE, col_types = cols(X1 = col_character()) )
+#Reading face shape and genotype IDs
+setwd(paste(path, "/DataBases/IDS", sep = ""))
 
-#Reading genotype files
-setwd(paste(path, "/DataBases/Genotypes/GenoPCA", sep = ""))
-geno_ids <- read_delim("geno.fam", col_names = FALSE, delim = " ")[,2]
+faceIDs <- read_csv("total_faceshape_ids.txt", col_names = F, col_types = cols(X1 = col_character()))
+genoIDs <- read_csv("total_genotype_ids.txt", col_names = F, col_types = cols(X1 = col_character()))
 
-common_ids <- intersect(intersect(face_ids$X1, na.omit(covs)$ID ), geno_ids$X2)
+common_ids <- intersect(intersect(faceIDs$X1, na.omit(covs)$ID ), genoIDs$X1)
 write_csv(as.data.frame(common_ids), paste(path, "/Results/common_ids.txt", sep = ""), col_names = FALSE)
 ```
 

@@ -254,9 +254,7 @@ h6 {
 </style>
 
 
-</head>
 
-<body>
 
 <style type="text/css">
 .main-container {
@@ -281,22 +279,92 @@ img {
 button.code-folding-btn:focus {
   outline: none;
 }
+summary {
+  display: list-item;
+}
 </style>
 
 
 
-<div class="container-fluid main-container">
-
 <!-- tabsets -->
+
+<style type="text/css">
+.tabset-dropdown > .nav-tabs {
+  display: inline-table;
+  max-height: 500px;
+  min-height: 44px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.tabset-dropdown > .nav-tabs > li.active:before {
+  content: "";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li.active:before {
+  content: "";
+  border: none;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open:before {
+  content: "";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs > li.active {
+  display: block;
+}
+
+.tabset-dropdown > .nav-tabs > li > a,
+.tabset-dropdown > .nav-tabs > li > a:focus,
+.tabset-dropdown > .nav-tabs > li > a:hover {
+  border: none;
+  display: inline-block;
+  border-radius: 4px;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li {
+  display: block;
+  float: none;
+}
+
+.tabset-dropdown > .nav-tabs > li {
+  display: none;
+}
+</style>
+
 <script>
 $(document).ready(function () {
   window.buildTabsets("TOC");
+});
+
+$(document).ready(function () {
+  $('.tabset-dropdown > .nav-tabs > li').click(function () {
+    $(this).parent().toggleClass('nav-tabs-open')
+  });
 });
 </script>
 
 <!-- code folding -->
 
 
+
+
+</head>
+
+<body>
+
+
+<div class="container-fluid main-container">
 
 
 
@@ -315,16 +383,24 @@ $(document).ready(function () {
 <h2>Preliminares</h2>
 <p>Loading libraries</p>
 <pre class="r"><code>library(tidyverse)</code></pre>
-<pre><code>## ── Attaching packages ──────────────────────────────────────────────────────────────────────────────────── tidyverse 1.2.1 ──</code></pre>
-<pre><code>## ✔ ggplot2 3.0.0     ✔ purrr   0.2.5
-## ✔ tibble  1.4.2     ✔ dplyr   0.7.7
-## ✔ tidyr   0.8.1     ✔ stringr 1.3.1
-## ✔ readr   1.1.1     ✔ forcats 0.3.0</code></pre>
-<pre><code>## ── Conflicts ─────────────────────────────────────────────────────────────────────────────────────── tidyverse_conflicts() ──
+<pre><code>## Registered S3 methods overwritten by &#39;ggplot2&#39;:
+##   method         from 
+##   [.quosures     rlang
+##   c.quosures     rlang
+##   print.quosures rlang</code></pre>
+<pre><code>## Registered S3 method overwritten by &#39;rvest&#39;:
+##   method            from
+##   read_xml.response xml2</code></pre>
+<pre><code>## ── Attaching packages ───────────────────────────────────────────────────────────────────────────────────────── tidyverse 1.2.1 ──</code></pre>
+<pre><code>## ✔ ggplot2 3.1.1       ✔ purrr   0.3.2  
+## ✔ tibble  2.1.1       ✔ dplyr   0.8.0.1
+## ✔ tidyr   0.8.3       ✔ stringr 1.4.0  
+## ✔ readr   1.3.1       ✔ forcats 0.4.0</code></pre>
+<pre><code>## ── Conflicts ──────────────────────────────────────────────────────────────────────────────────────────── tidyverse_conflicts() ──
 ## ✖ dplyr::filter() masks stats::filter()
 ## ✖ dplyr::lag()    masks stats::lag()</code></pre>
 <p>Setting folders, and loading databases, getting common set of IDs and saving object</p>
-<pre class="r"><code>setwd('..')
+<pre class="r"><code>setwd(&#39;..&#39;)
 path &lt;- getwd()
 
 #Reading covariates
@@ -335,35 +411,25 @@ covs &lt;- na.omit(covs)
 #Keep only Male/Female individuals
 covs &lt;- covs %&gt;% filter(Sex == &quot;Female&quot; | Sex == &quot;Male&quot;)
 
-#Reading face PCA
-setwd(paste(path, &quot;/DataBases/FacePCA&quot;, sep = &quot;&quot;))
-face_ids &lt;- read_csv(&quot;landmark_ids.txt&quot;, col_names = FALSE, col_types = cols(X1 = col_character()) )
+#Reading face shape and genotype IDs
+setwd(paste(path, &quot;/DataBases/IDS&quot;, sep = &quot;&quot;))
 
-#Reading genotype files
-setwd(paste(path, &quot;/DataBases/Genotypes/GenoPCA&quot;, sep = &quot;&quot;))
-geno_ids &lt;- read_delim(&quot;geno.fam&quot;, col_names = FALSE, delim = &quot; &quot;)[,2]</code></pre>
-<pre><code>## Parsed with column specification:
-## cols(
-##   X1 = col_integer(),
-##   X2 = col_character(),
-##   X3 = col_integer(),
-##   X4 = col_integer(),
-##   X5 = col_integer(),
-##   X6 = col_integer()
-## )</code></pre>
-<pre class="r"><code>common_ids &lt;- intersect(intersect(face_ids$X1, na.omit(covs)$ID ), geno_ids$X2)
+faceIDs &lt;- read_csv(&quot;total_faceshape_ids.txt&quot;, col_names = F, col_types = cols(X1 = col_character()))
+genoIDs &lt;- read_csv(&quot;total_genotype_ids.txt&quot;, col_names = F, col_types = cols(X1 = col_character()))
+
+common_ids &lt;- intersect(intersect(faceIDs$X1, na.omit(covs)$ID ), genoIDs$X1)
 write_csv(as.data.frame(common_ids), paste(path, &quot;/Results/common_ids.txt&quot;, sep = &quot;&quot;), col_names = FALSE)</code></pre>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
 <pre class="r"><code>sessionInfo()</code></pre>
-<pre><code>## R version 3.5.2 (2018-12-20)
+<pre><code>## R version 3.6.0 (2019-04-26)
 ## Platform: x86_64-pc-linux-gnu (64-bit)
-## Running under: Ubuntu 18.04.1 LTS
+## Running under: Manjaro Linux
 ## 
 ## Matrix products: default
-## BLAS: /usr/lib/x86_64-linux-gnu/openblas/libblas.so.3
-## LAPACK: /usr/lib/x86_64-linux-gnu/libopenblasp-r0.2.20.so
+## BLAS:   /usr/lib/libopenblasp-r0.3.5.so
+## LAPACK: /usr/lib/liblapack.so.3.8.0
 ## 
 ## locale:
 ##  [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
@@ -377,23 +443,23 @@ write_csv(as.data.frame(common_ids), paste(path, &quot;/Results/common_ids.txt&q
 ## [1] stats     graphics  grDevices utils     datasets  methods   base     
 ## 
 ## other attached packages:
-##  [1] bindrcpp_0.2.2  forcats_0.3.0   stringr_1.3.1   dplyr_0.7.7    
-##  [5] purrr_0.2.5     readr_1.1.1     tidyr_0.8.1     tibble_1.4.2   
-##  [9] ggplot2_3.0.0   tidyverse_1.2.1
+## [1] forcats_0.4.0   stringr_1.4.0   dplyr_0.8.0.1   purrr_0.3.2    
+## [5] readr_1.3.1     tidyr_0.8.3     tibble_2.1.1    ggplot2_3.1.1  
+## [9] tidyverse_1.2.1
 ## 
 ## loaded via a namespace (and not attached):
-##  [1] Rcpp_0.12.19     cellranger_1.1.0 pillar_1.3.0     compiler_3.5.2  
-##  [5] plyr_1.8.4       bindr_0.1.1      tools_3.5.2      digest_0.6.18   
-##  [9] lubridate_1.7.4  jsonlite_1.5     evaluate_0.12    nlme_3.1-137    
-## [13] gtable_0.2.0     lattice_0.20-38  pkgconfig_2.0.2  rlang_0.2.2     
-## [17] cli_1.0.1        rstudioapi_0.8   yaml_2.2.0       haven_1.1.2     
-## [21] withr_2.1.2      xml2_1.2.0       httr_1.3.1       knitr_1.20      
-## [25] hms_0.4.2        rprojroot_1.3-2  grid_3.5.2       tidyselect_0.2.5
-## [29] glue_1.3.0       R6_2.3.0         fansi_0.4.0      readxl_1.1.0    
-## [33] rmarkdown_1.10   modelr_0.1.2     magrittr_1.5     backports_1.1.2 
-## [37] scales_1.0.0     htmltools_0.3.6  rvest_0.3.2      assertthat_0.2.0
-## [41] colorspace_1.3-2 utf8_1.1.4       stringi_1.2.4    lazyeval_0.2.1  
-## [45] munsell_0.5.0    broom_0.5.0      crayon_1.3.4</code></pre>
+##  [1] Rcpp_1.0.1       cellranger_1.1.0 pillar_1.3.1     compiler_3.6.0  
+##  [5] plyr_1.8.4       tools_3.6.0      digest_0.6.18    lubridate_1.7.4 
+##  [9] jsonlite_1.6     evaluate_0.13    nlme_3.1-139     gtable_0.3.0    
+## [13] lattice_0.20-38  pkgconfig_2.0.2  rlang_0.3.4      cli_1.1.0       
+## [17] rstudioapi_0.10  yaml_2.2.0       haven_2.1.0      xfun_0.6        
+## [21] withr_2.1.2      xml2_1.2.0       httr_1.4.0       knitr_1.22      
+## [25] hms_0.4.2        generics_0.0.2   grid_3.6.0       tidyselect_0.2.5
+## [29] glue_1.3.1       R6_2.4.0         readxl_1.3.1     rmarkdown_1.12  
+## [33] modelr_0.1.4     magrittr_1.5     backports_1.1.4  scales_1.0.0    
+## [37] htmltools_0.3.6  rvest_0.3.3      assertthat_0.2.1 colorspace_1.4-1
+## [41] stringi_1.4.3    lazyeval_0.2.2   munsell_0.5.0    broom_0.5.2     
+## [45] crayon_1.3.4</code></pre>
 </div>
 
 
