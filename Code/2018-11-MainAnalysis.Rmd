@@ -14,6 +14,7 @@ Load libraries
 library(tidyverse)
 library(car)
 library(dendextend)
+library(ape)
 source("PhenotypicChangeTests.R")
 source("FinestructureLibrary.R") # read in the R functions, which also calls the needed packages
 ```
@@ -26,7 +27,7 @@ path <- getwd()
 setwd(paste(path, "/DataBases/Genotypes/Admixture", sep = ""))
 
 #Reading Admixture run
-adk6  <- read_delim("geno.6.Q", delim = " ", col_names = FALSE)
+adk7  <- read_delim("geno.7.Q", delim = " ", col_names = FALSE)
 adfam <- read_delim("geno.fam", delim = " ", col_names = c("FID", "ID","P","M","Ph")) %>% select(ID)
 
 #Reading covariates
@@ -42,18 +43,14 @@ colnames(scores) <- paste("PC", 1:length(scores), sep="")
 face_ids <- read_csv("landmark_ids.txt", col_names = "ID", col_types = cols(ID = col_character()))
 face_pca <- cbind(face_ids, scores)
 
-#Reading list of common IDs
-setwd(paste(path, "/Results", sep = ""))
-common_ids <- read_delim("common_ids.txt", delim = " ", col_names = "ID", col_types = cols(ID = col_character()))
-
 #get only adapt ids
-keep  <- which(adfam$ID %in% common_ids$ID)
-adk6  <- adk6[keep,]
+keep  <- which(adfam$ID %in% face_ids$ID)
+adk7  <- adk7[keep,]
 adfam <- adfam[keep,]
 
 #Subsetting the other databases
 tot_samples <- adfam %>% left_join(covs, by = "ID") %>% mutate(BMI = Weight / (Height/100)^2) %>% 
-  left_join(face_pca, by = "ID") %>% mutate(Sex = as.factor(Sex))
+  left_join(face_pca, by = "ID") %>% mutate(Sex = as.factor(Sex)) %>% distinct(ID, .keep_all = TRUE)
 ```
 
 Read and plot the fineStructure dendrogram
@@ -63,7 +60,7 @@ setwd('..')
 path <- getwd()
 setwd(paste(path, "/DataBases/Genotypes/FineStructure", sep = ""))
 
-treexml <- xmlTreeParse("total_fs_linked.greedy_outputfile.xml") ## read the tree as xml format
+treexml <- xmlTreeParse("total_fs_linked.tree.xml") ## read the tree as xml format
 ttree   <- extractTree(treexml) ## extract the tree into ape's phylo format
 ## Will will instead remove "perfect" node labels
 ttree$node.label[ttree$node.label=="1"] <- ""
@@ -79,8 +76,9 @@ print('Number of IDs per pop ranges from')
 summary(unlist(lapply(mapstatelist, function(x) length(x))))
 
 #Cut
-tdend_cut <- cut(tdend, h = 6.5)$upper
-tdend_cut_low <- cut(tdend, h = 6.5)$lower
+height_cut <- 900000
+tdend_cut <- cut(tdend, h = height_cut)$upper
+tdend_cut_low <- cut(tdend, h = height_cut)$lower
 tdend_cut %>% hang.dendrogram(hang = -1) %>% plot
 
 fs_groups <- as.data.frame(matrix(NA, nrow = length(labels(tdend)), ncol = 2))
@@ -93,7 +91,7 @@ for(i in 1:ngroups){
 }
 
 #get only adapt ids
-keep       <- which(fs_groups$ID %in% common_ids$ID)
+keep       <- which(fs_groups$ID %in% face_ids$ID)
 fs_groups  <- fs_groups[keep,]
 #keep order of adfam
 fs_groups  <- adfam %>% left_join(fs_groups, by = "ID")
@@ -102,6 +100,15 @@ summary(as.factor(fs_groups$cluster))
 #Adding fs_group initial cluster to tot_samples object
 tot_samples <- tot_samples %>% left_join(fs_groups, by = "ID")
 colnames(tot_samples)[length(tot_samples)] <- c("cluster_initial")
+```
+
+We'll export the truncated dendrogram to newick format for later use
+
+```{r export tree}
+tree_cut <- as.phylo(tdend_cut)
+plot(tree_cut)
+setwd(paste(path, "/Results", sep = ""))
+write.tree(phy=tree_cut, file="tree_cut.newick")
 ```
 
 ## Analysis 
@@ -131,7 +138,15 @@ matrix <- tot_samples %>% select(starts_with("PC"))
 covs   <- tot_samples %>% select(c("Age", "Height", "BMI","Sex", "cluster_initial"))
 covs[,c(1:3)] <- scale(covs[,c(1:3)])
 
-#Getting model matrix, and runnning vector change
+#Branch2vs3
+keep <- covs$cluster_initial == 2 | covs$cluster_initial == 3 
+fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
+            covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
+Manova(fit, type = 3, test.statistic = "Wilks")
+#Changing value of branch 3 to 2
+covs$cluster_initial[covs$cluster_initial == 3] <- 2
+
+#Branch1vs2
 keep <- covs$cluster_initial == 1 | covs$cluster_initial == 2 
 fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
             covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
@@ -139,76 +154,60 @@ Manova(fit, type = 3, test.statistic = "Wilks")
 #Changing value of branch 2 to 1
 covs$cluster_initial[covs$cluster_initial == 2] <- 1
 
-#Branch1vs3
-keep <- covs$cluster_initial == 1 | covs$cluster_initial == 3 
+#Branch5vs6
+keep <- covs$cluster_initial == 5 | covs$cluster_initial == 6 
 fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
             covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
 Manova(fit, type = 3, test.statistic = "Wilks")
-#Changing value of branch 3 to 1
-covs$cluster_initial[covs$cluster_initial == 3] <- 1
+#Changing value of branch 6 to 5
+covs$cluster_initial[covs$cluster_initial == 6] <- 5
+
+#Branch5vs7
+keep <- covs$cluster_initial == 5 | covs$cluster_initial == 7
+fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
+            covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
+Manova(fit, type = 3, test.statistic = "Wilks")
+#Changing value of branch 7 to 5
+covs$cluster_initial[covs$cluster_initial == 7] <- 5
 
 #Branch4vs5
-keep <- covs$cluster_initial == 4 | covs$cluster_initial == 5 
+keep <- covs$cluster_initial == 4 | covs$cluster_initial == 5
 fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
             covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
 Manova(fit, type = 3, test.statistic = "Wilks")
 #Changing value of branch 5 to 4
 covs$cluster_initial[covs$cluster_initial == 5] <- 4
 
+#Branch8vs9
+keep <- covs$cluster_initial == 8 | covs$cluster_initial == 9
+fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
+            covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
+Manova(fit, type = 3, test.statistic = "Wilks")
+#Changing value of branch 9 to 8
+covs$cluster_initial[covs$cluster_initial == 9] <- 8
+
+#Branch4vs8
+keep <- covs$cluster_initial == 4 | covs$cluster_initial == 8
+fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
+            covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
+Manova(fit, type = 3, test.statistic = "Wilks")
+#Changing value of branch 8 to 4
+covs$cluster_initial[covs$cluster_initial == 8] <- 4
+
+#Branch4vs10
+keep <- covs$cluster_initial == 4 | covs$cluster_initial == 10
+fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
+            covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
+Manova(fit, type = 3, test.statistic = "Wilks")
+
 #Branch1vs4
-keep <- covs$cluster_initial == 1 | covs$cluster_initial == 4 
-fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
-            covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
-Manova(fit, type = 3, test.statistic = "Wilks")
-#Changing value of branch 5 to 4
-covs$cluster_initial[covs$cluster_initial == 4] <- 1
-
-#Branch6vs7
-keep <- covs$cluster_initial == 6 | covs$cluster_initial == 7
-fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
-            covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
-Manova(fit, type = 3, test.statistic = "Wilks")
-#Changing value of branch 7 to 6
-covs$cluster_initial[covs$cluster_initial == 7] <- 6
-
-#Branch6vs8
-keep <- covs$cluster_initial == 6 | covs$cluster_initial == 8
-fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
-            covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
-Manova(fit, type = 3, test.statistic = "Wilks")
-#Changing value of branch 8 to 6
-covs$cluster_initial[covs$cluster_initial == 8] <- 6
-
-#Branch9vs10
-keep <- covs$cluster_initial == 9 | covs$cluster_initial == 10
-fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
-            covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
-Manova(fit, type = 3, test.statistic = "Wilks")
-#Changing value of branch 10 to 9
-covs$cluster_initial[covs$cluster_initial == 10] <- 9
-
-#Branch 6 vs 9
-keep <- covs$cluster_initial == 6 | covs$cluster_initial == 9
-fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
-            covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
-Manova(fit, type = 3, test.statistic = "Wilks")
-#Changing value of branch 9 to 6
-covs$cluster_initial[covs$cluster_initial == 9] <- 6
-
-#Branch 6 vs 11
-keep <- covs$cluster_initial == 6 | covs$cluster_initial == 11
+keep <- covs$cluster_initial == 1 | covs$cluster_initial == 4
 fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
             covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
 Manova(fit, type = 3, test.statistic = "Wilks")
 
-#Branch 1 vs 6
-keep <- covs$cluster_initial == 1 | covs$cluster_initial == 6
-fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
-            covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
-Manova(fit, type = 3, test.statistic = "Wilks")
-
-#Branch 1 vs 11
-keep <- covs$cluster_initial == 1 | covs$cluster_initial == 11
+#Branch1vs10
+keep <- covs$cluster_initial == 1 | covs$cluster_initial == 10
 fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
             covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
 Manova(fit, type = 3, test.statistic = "Wilks")
@@ -263,6 +262,142 @@ tot_samples <- tot_samples %>% bind_cols(covs %>% select(cluster_final))
 ```{r saving}
 setwd(paste(path, "/Results", sep = ""))
 write_csv(tot_samples, "tot_samples.csv")
-
 ```
 
+## Second Analysis
+
+Here we'll use Admixture values
+
+### Homogeneous pops
+
+Getting individuals for homogeneous pops
+
+```{r homogenous pops}
+h_group <- rep(NA, length(tot_samples$ID))
+for( i in 1:6){
+  h_group[adk7[,i] > 0.7] <- i 
+}
+summary(as.factor(h_group))
+```
+
+We'll use only pops 2, 3, 4, and 5, because of the small sample sizes in the other. 
+
+```{r}
+#Getting subset of whole sample from groups 1, 2, 4, and 6
+h_comparison <- bind_cols(as_tibble(h_group), tot_samples)
+h_comparison$value[ h_comparison$value == 6 ] <- NA
+h_comparison <- na.omit(h_comparison)
+
+#Sample sizes
+summary(interaction(h_comparison$value, as.factor(h_comparison$Sex)))
+
+table(h_comparison$value, h_comparison$cluster_initial)
+table(h_comparison$value, h_comparison$cluster_final)
+```
+
+```{r h pop comparison}
+#Getting response and predictor matrices
+matrix <- h_comparison %>% select(starts_with("PC"))
+covs   <- h_comparison %>% select(c("Age", "Height", "BMI","Sex", "value"))
+covs[,c(1:3)] <- scale(covs[,c(1:3)])
+
+#Getting model matrix, and runnning vector change
+model_mat  <- model.matrix( ~ Age + Height + BMI + Sex * as.factor(value), data=covs)
+nonallo_covs_mat <- model_mat[,1:4]
+total_covs_mat   <- model_mat[,c(1:2,4)]
+x_mat_red  <- model_mat[,5:8]
+x_mat_full <- model_mat[,5:11]
+nonallo_out_mat <- run_vector_change(matrix, nonallo_covs_mat, x_mat_red, x_mat_full, permute=9999)
+total_out_mat   <- run_vector_change(matrix, total_covs_mat, x_mat_red, x_mat_full, permute=9999)
+
+#Printing pairwise tables
+nonallo_angle_table <- pairwise_pvals(nonallo_out_mat)
+pvals <- nonallo_angle_table[upper.tri(nonallo_angle_table)]
+print("Non allometric angles")
+nonallo_angle_table
+cat("\n")
+nonallo_diff_table  <- pairwise_pvals(nonallo_out_mat, 0)
+print("Non allometric magnitues")
+nonallo_diff_table
+cat("\n")
+
+total_angle_table <- pairwise_pvals(total_out_mat)
+pvals <- c(pvals, total_angle_table[upper.tri(total_angle_table)])
+print("Total angles")
+total_angle_table
+cat("\n")
+total_diff_table  <- pairwise_pvals(total_out_mat, 0)
+print("Total magnitudes")
+total_diff_table
+```
+
+### Dividing our entire sample
+
+```{r}
+#Create grouping variable t_group, containg the cluster that each individuals has more of their ancestry from
+t_group <- apply(adk7, 1, function(x) which.max(x))
+summary(as.factor(t_group))
+```
+
+```{r t pop comparison}
+#Getting subset of whole sample from groups 
+t_comparison <- bind_cols(as.tibble(t_group), tot_samples)
+t_comparison <- na.omit(t_comparison)
+t_comparison <- t_comparison %>% filter(Sex == "Female" | Sex == "Male") %>% mutate(value = as.factor(value))
+
+#Sample sizes
+summary(interaction(t_comparison$value, as.factor(t_comparison$Sex)))
+
+#Getting response and predictor matrices
+matrix <- t_comparison %>% select(starts_with("PC"))
+covs   <- t_comparison %>% select(c("Age", "Height", "BMI","Sex", "value"))
+covs[,c(1:3)] <- scale(covs[,c(1:3)])
+
+#Getting model matrix, and runnning vector change
+model_mat  <- model.matrix( ~ Age + Height + BMI + Sex * value, data=covs)
+nonallo_covs_mat <- model_mat[,1:4]
+total_covs_mat   <- model_mat[,c(1:2,4)]
+x_mat_red  <- model_mat[,5:9]
+x_mat_full <- model_mat[,5:13]
+nonallo_out_mat <- run_vector_change(matrix, nonallo_covs_mat, x_mat_red, x_mat_full, permute=9999)
+total_out_mat   <- run_vector_change(matrix, total_covs_mat, x_mat_red, x_mat_full, permute=9999)
+
+#Printing pairwise tables
+nonallo_angle_table <- pairwise_pvals(nonallo_out_mat)
+pvals <- c(pvals, nonallo_angle_table[upper.tri(nonallo_angle_table)])
+print("Non allometric angles")
+nonallo_angle_table
+cat("\n")
+nonallo_diff_table  <- pairwise_pvals(nonallo_out_mat, 0)
+print("Non allometric magnitues")
+nonallo_diff_table
+cat("\n")
+
+total_angle_table <- pairwise_pvals(total_out_mat)
+pvals <- c(pvals, total_angle_table[upper.tri(total_angle_table)])
+print("Total angles")
+total_angle_table
+cat("\n")
+total_diff_table  <- pairwise_pvals(total_out_mat, 0)
+print("Total magnitudes")
+total_diff_table
+```
+
+## Allometric differences
+
+```{r allo}
+library(RRPP)
+
+matrix <- tot_samples %>% select(starts_with("PC"))
+covs   <- tot_samples %>% select(c("Age", "Height", "BMI","Sex", "cluster_final"))
+covs[,c(1:3)] <- scale(covs[,c(1:3)])
+
+dat <- list(Y = matrix, X = covs)
+
+fit <- lm.rrpp(as.matrix(dat$Y) ~ dat$X$Age + dat$X$BMI + dat$X$Height + 
+                 (dat$X$Sex * dat$X$cluster_final) + dat$X$Height * (dat$X$Sex * dat$X$cluster_final), 
+               SS.type = "III", data=dat, iter = 9999, print.progress = F)
+
+anova(fit, effect.type = "F")
+
+```

@@ -1,0 +1,55 @@
+---
+title: Table S3
+output:
+  html_document: default
+---
+
+In this notebook we'll generate table S3, which shows the sample sizes divided by leaf from fineStructure.
+
+## Preliminaries
+
+Load libraries
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(tidyverse)
+#For latex()
+library(Hmisc)
+```
+
+Read databases
+
+```{r databases, warning=FALSE, message=FALSE}
+setwd('../..')
+path <- getwd()
+
+#Reading tot_samples database
+setwd(paste(path, "/Results", sep = ""))
+tot_samples <- read_csv("tot_samples.csv")
+tot_samples <- tot_samples %>% mutate(Sex = as.factor(Sex))
+```
+
+## Table
+
+We first assemble the table, and then we generate the latex output. We just copied and pasted the result on the corresponding file
+
+```{r table}
+ngroups <- 10
+enes <- tot_samples %>% group_by(cluster_initial, Sex) %>% tally()
+tab  <- matrix(enes$n, nrow = ngroups, byrow = TRUE)
+rownames(tab) <- paste("L", seq(1:ngroups), sep = "")
+colnames(tab) <- c("Females", "Males")
+tab <- t(tab)
+
+tab_latex <- latex(tab, file="", title="", 
+                   caption="Sample sizes for each leaf", 
+                   label = "", col.just=rep("c",11),
+                    rowlabel.just="c", booktabs = TRUE)
+
+```
+
+## Session info
+
+```{r session}
+print(sessionInfo())
+```
+

@@ -65,7 +65,43 @@ write_csv(as.data.frame(PC_landmarks), "PC_landmarks.csv", col_names = FALSE)
 
 ## Sex dimorphism
 
-We'll generate the faces of males and females for the 3 final branches, and the 11 initial leaves.
+We'll generate the faces of male and females in the total sample
+
+```{r}
+#Exaggerated faces
+ex = 1.5
+
+#Separating datasets
+Y <- tot_samples %>% select(starts_with("PC"))
+X <- tot_samples %>% select(Age, BMI, Height, Sex)
+X[,1:3] <- scale(X[,1:3])
+
+fit <- lm(as.matrix(Y) ~ Age + BMI + Height + Sex, data = X)
+avg_female <- fit$coefficients[1,] 
+avg_male   <- fit$coefficients[1,] + fit$coefficients[5,]
+avg_female_red <- avg_female
+avg_female_red[6:13] <- 0
+
+avg_male_red <- avg_male
+avg_male_red[6:13] <- 0
+
+avg_faces <- rbind(avg_female, avg_male, avg_female_red, avg_male_red) * ex
+
+new_means <- matrix(0, nrow = 4, ncol = dim(eigenvec)[1])
+for(i in 1:nrow(new_means)){
+  new_means[i,] <- t(as.matrix(means))
+}
+
+avg_landmarks <- (avg_faces %*% t(as.matrix(eigenvec)) ) + new_means
+
+#Saving dataset
+setwd(paste(path, "/Results/Landmarks", sep = ""))
+write_csv(as.data.frame(avg_landmarks), "avg_landmarks.csv", col_names = FALSE)
+
+```
+
+
+We'll generate the faces of males and females for the 3 final branches, and the 10 initial leaves.
 
 ```{r sex dimorphism}
 #Define functions
@@ -137,5 +173,67 @@ write_csv(as.data.frame(landmark_set), "sex_decomp_landmarks.csv", col_names = F
 ```
 
 
+Here we will apply the sex dimorphism vectors on the same average face
+
+```{r}
+
+y.mat <- as.matrix(select(tot_samples, starts_with("PC") ))
+covs  <- select(tot_samples, c("Age", "Height", "BMI","Sex", "cluster_final"))
+covs[,c(1:3)] <- scale(covs[,c(1:3)])
+covs$cluster_final <- as.factor(covs$cluster_final)
+model_mat  <- model.matrix( ~ Age + Height + BMI + Sex * cluster_final, data=covs)
+
+b.mat <- solve((t(model_mat) %*% model_mat)) %*% (t(model_mat) %*% y.mat)
+
+base <- c(1, rep(0,3)) # Base contains the intercept and zeros equal to the number of covariates 
+base <- t(replicate(6, base))
+sex_groups <- rbind(c(0,0,0,0,0), c(1,0,0,0,0), c(0,1,0,0,0), c(1,1,0,1,0), c(0,0,1,0,0), c(1,0,1,0,1))
+
+x.ls <- cbind(base, sex_groups)
+
+obs.ls <- x.ls %*% b.mat
+
+#Getting vectors
+obs.vect <- matrix(0, nrow = 3 , ncol = ncol(obs.ls)) 
+row <- 1
+for (i in seq(1,6,2)){
+  obs.vect[row,] <- obs.ls[i,] - obs.ls[i+1,] # These are the phenotypic change vectors
+  row <- row + 1
+}
+
+#get length to set up to unit distance
+obs.d <- matrix(0, nrow = 3, ncol = 1)
+for (i in 1:3){
+  obs.d[i,] <- sqrt(t(obs.vect[i,]) %*% obs.vect[i,]) # These are lengths of vectors
+}
+
+obs.vect.unit <- matrix(0, nrow = 3 , ncol = ncol(obs.ls)) 
+for (i in 1:3){
+  obs.vect.unit[i,] <- obs.vect[i,] / obs.d[i,]
+}
+
+average_face <- apply(obs.ls, 2, function(x) mean(x))
+
+sex_vector_average <- matrix(0, nrow = 6, ncol = ncol(obs.ls))
+row <- 1
+for (i in 1:3){
+  sex_vector_average[row, ] <- (average_face + obs.vect[i,] ) * 1.5
+  row <- row + 1
+  sex_vector_average[row, ] <- (average_face - obs.vect[i,] ) *1.5
+  row <- row + 1
+}
+
+#Get landmarks
+new_means <- matrix(0, nrow = nrow(sex_vector_average), ncol = dim(eigenvec)[1])
+  
+for(i in 1:nrow(new_means)){
+  new_means[i,] <- t(as.matrix(means))
+}
+  
+landmarks <- (as.matrix(sex_vector_average) %*% t(as.matrix(eigenvec)) ) + new_means
+#Saving dataset
+setwd(paste(path, "/Results/Landmarks", sep = ""))
+write_csv(as.data.frame(landmarks), "sex_vector_average.csv", col_names = FALSE)
+```
 
 

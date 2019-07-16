@@ -1,0 +1,371 @@
+---
+title: Face shape sexual dimorphism population comparison
+output:
+  html_document: default
+---
+
+In this notebook we'll compare face shape sexual dimorphism between populations (for magnitude and pattern).
+We will use two complementary approaches:
+1. First, we will traverse the dendrogram from fineStructure by testing the sex by population interaction term using a MANOVA. 
+To do that, we will arbitrarily cut the dendrogram at height 6.5 which results in a total of 11 leaves.
+For each of the 11 leaves we used a MANOVA to test for the sex by population interaction term. 
+If a non-significant term was found, the leaves were merged.
+Finally, the post-hoc tests for pattern and magnitude were used for those branches with significant differences.
+We keep track of the initial cluster (11 leaves), and the final cluster (N branches) and export the final dataset.
+
+2. Second, we will compare populations based on their Admixture proportions, with $k = 6$. 
+Specifically, in a first attempt we will generate homogeneous populations that have more than 0.7 assignment proportion for any cluster. 
+In another attempt we will assign individuals to clusters from which they have most of their ancestry proportions assigned to.
+Finally, we will keep track of both attempt and include them into the final dataset.
+
+## Preliminaries
+
+Load libraries
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(car)
+library(dendextend)
+library(ape)
+source("PhenotypicChangeTests.R")
+source("FinestructureLibrary.R") # read in the R functions, which also calls the needed packages
+```
+
+Read databases
+
+```{r databases, warning=FALSE, message=FALSE}
+setwd('..')
+path <- getwd()
+setwd(paste(path, "/DataBases/Genotypes/Admixture", sep = ""))
+
+#Reading Admixture run
+adk6  <- read_delim("geno.6.Q", delim = " ", col_names = FALSE)
+adfam <- read_delim("geno.fam", delim = " ", col_names = c("FID", "ID","P","M","Ph")) %>% select(ID)
+
+#Reading covariates
+setwd(paste(path, "/DataBases", sep = ""))
+covs  <- read_csv("Covariates.csv", col_types = cols(ID = col_character()))
+
+#Reading face PCA
+setwd(paste(path, "/DataBases/FacePCA", sep = ""))
+scores       <- read_csv("scores.csv", col_names = FALSE)
+eigenvectors <- read_csv("eigenvectors.csv", col_names = FALSE)
+means        <- read_csv("means.txt", col_names = FALSE)
+colnames(scores) <- paste("PC", 1:length(scores), sep="")
+face_ids <- read_csv("landmark_ids.txt", col_names = "ID", col_types = cols(ID = col_character()))
+face_pca <- cbind(face_ids, scores)
+
+#Reading list of common IDs
+setwd(paste(path, "/Results", sep = ""))
+common_ids <- read_delim("common_ids.txt", delim = " ", col_names = "ID", col_types = cols(ID = col_character()))
+
+#get only adapt ids
+keep  <- which(adfam$ID %in% common_ids$ID)
+adk6  <- adk6[keep,]
+adfam <- adfam[keep,]
+
+#Subsetting the other databases
+tot_samples <- adfam %>% left_join(covs, by = "ID") %>% mutate(BMI = Weight / (Height/100)^2) %>% 
+  left_join(face_pca, by = "ID") %>% mutate(Sex = as.factor(Sex))
+```
+
+Read and plot the fineStructure dendrogram
+
+```{r tree, warning=FALSE, message=FALSE}
+setwd('..')
+path <- getwd()
+setwd(paste(path, "/DataBases/Genotypes/FineStructure", sep = ""))
+
+treexml <- xmlTreeParse("total_fs_linked.greedy_outputfile.xml") ## read the tree as xml format
+ttree   <- extractTree(treexml) ## extract the tree into ape's phylo format
+## Will will instead remove "perfect" node labels
+ttree$node.label[ttree$node.label=="1"] <- ""
+ttree$node.label[ttree$node.label!=""] <- format(as.numeric(ttree$node.label[ttree$node.label!=""]),digits=2)
+tdend <- myapetodend(ttree,factor=1) # convert to dendrogram format
+
+#Get number of IDs per pop
+mapstate     <- extractValue(treexml,"Pop") # map state as a finestructure clustering
+mapstatelist <- popAsList(mapstate) # .. and as a list of individuals in populations
+print('Number of pops is')
+print(length(mapstatelist))
+print('Number of IDs per pop ranges from')
+summary(unlist(lapply(mapstatelist, function(x) length(x))))
+
+#Cut
+tdend_cut <- cut(tdend, h = 6.5)$upper
+tdend_cut_low <- cut(tdend, h = 6.5)$lower
+tdend_cut %>% hang.dendrogram %>% plot
+
+fs_groups <- as.data.frame(matrix(NA, nrow = length(labels(tdend)), ncol = 2))
+colnames(fs_groups) <- c("ID", "cluster")
+fs_groups$ID <- labels(tdend)
+ngroups <- max(as.integer(labels(tdend_cut_low)))
+
+for(i in 1:ngroups){
+  fs_groups$cluster[fs_groups$ID %in% labels(tdend_cut_low[[i]])] <- i
+}
+
+#get only adapt ids
+keep       <- which(fs_groups$ID %in% common_ids$ID)
+fs_groups  <- fs_groups[keep,]
+#keep order of adfam
+fs_groups  <- adfam %>% left_join(fs_groups, by = "ID")
+summary(as.factor(fs_groups$cluster))
+
+#Adding fs_group initial cluster to tot_samples object
+tot_samples <- tot_samples %>% left_join(fs_groups, by = "ID")
+colnames(tot_samples)[length(tot_samples)] <- c("cluster_initial")
+```
+
+We'll export the truncated dendrogram to newick format for later use
+
+```{r export tree}
+tree_cut <- as.phylo(tdend_cut)
+setwd(paste(path, "/Results", sep = ""))
+write.tree(phy=tree_cut, file="tree_cut.newick")
+```
+
+## Analysis 
+
+Traversing the dendrogram. Because 10 independent tests need to be made, we will consider alpha = `r 0.05/10`
+
+```{r tree comparison}
+matrix <- tot_samples %>% select(starts_with("PC"))
+covs   <- tot_samples %>% select(c("Age", "Height", "BMI","Sex", "cluster_initial"))
+covs[,c(1:3)] <- scale(covs[,c(1:3)])
+
+run_Manova <- function(keep){
+  fit  <- lm(as.matrix(matrix[keep,]) ~ covs$Age[keep] + covs$Height[keep] + covs$BMI[keep] + 
+            covs$Sex[keep] * as.factor(covs$cluster_initial[keep]))
+  Manova(fit, type = 3, test.statistic = "Wilks")
+}
+
+#Getting model matrix, and runnning vector change
+keep <- covs$cluster_initial == 1 | covs$cluster_initial == 2 
+run_Manova(keep)
+#Changing value of branch 2 to 1
+covs$cluster_initial[covs$cluster_initial == 2] <- 1
+
+#Branch1vs3
+keep <- covs$cluster_initial == 1 | covs$cluster_initial == 3 
+run_Manova(keep)
+#Changing value of branch 3 to 1
+covs$cluster_initial[covs$cluster_initial == 3] <- 1
+
+#Branch4vs5
+keep <- covs$cluster_initial == 4 | covs$cluster_initial == 5 
+run_Manova(keep)
+#Changing value of branch 5 to 4
+covs$cluster_initial[covs$cluster_initial == 5] <- 4
+
+#Branch1vs4
+keep <- covs$cluster_initial == 1 | covs$cluster_initial == 4 
+run_Manova(keep)
+#Changing value of branch 5 to 4
+covs$cluster_initial[covs$cluster_initial == 4] <- 1
+
+#Branch6vs7
+keep <- covs$cluster_initial == 6 | covs$cluster_initial == 7
+run_Manova(keep)
+#Changing value of branch 7 to 6
+covs$cluster_initial[covs$cluster_initial == 7] <- 6
+
+#Branch6vs8
+keep <- covs$cluster_initial == 6 | covs$cluster_initial == 8
+run_Manova(keep)
+#Changing value of branch 8 to 6
+covs$cluster_initial[covs$cluster_initial == 8] <- 6
+
+#Branch9vs10
+keep <- covs$cluster_initial == 9 | covs$cluster_initial == 10
+run_Manova(keep)
+#Changing value of branch 10 to 9
+covs$cluster_initial[covs$cluster_initial == 10] <- 9
+
+#Branch 6 vs 9
+keep <- covs$cluster_initial == 6 | covs$cluster_initial == 9
+run_Manova(keep)
+#Changing value of branch 9 to 6
+covs$cluster_initial[covs$cluster_initial == 9] <- 6
+
+#Branch 6 vs 11
+keep <- covs$cluster_initial == 6 | covs$cluster_initial == 11
+run_Manova(keep)
+
+#Branch 1 vs 6
+keep <- covs$cluster_initial == 1 | covs$cluster_initial == 6
+run_Manova(keep)
+
+#Branch 1 vs 11
+keep <- covs$cluster_initial == 1 | covs$cluster_initial == 11
+run_Manova(keep)
+
+model_mat  <- model.matrix( ~ Age + Height + BMI + Sex * as.factor(covs$cluster_initial), data=covs)
+nonallo_covs_mat <- model_mat[,1:4]
+total_covs_mat   <- model_mat[,c(1:2,4)]
+ngroups  <- length(levels(as.factor(covs$cluster_initial )))
+red_end  <- 5 + (ngroups - 1)
+full_end <- 5 + ( (ngroups - 1) * 2)
+x_mat_red  <- model_mat[,5:red_end]
+x_mat_full <- model_mat[,5:full_end]
+
+nonallo_out_mat <- run_vector_change(matrix, nonallo_covs_mat, x_mat_red, x_mat_full, permute=9999)
+total_out_mat   <- run_vector_change(matrix, total_covs_mat, x_mat_red, x_mat_full, permute=9999)
+
+nonallo_angle_table <- pairwise_pvals(nonallo_out_mat)
+pvals <- nonallo_angle_table[upper.tri(nonallo_angle_table)]
+print("Non allometric angles")
+nonallo_angle_table
+cat("\n")
+nonallo_diff_table  <- pairwise_pvals(nonallo_out_mat, 0)
+print("Non allometric magnitues")
+nonallo_diff_table
+cat("\n")
+
+total_angle_table <- pairwise_pvals(total_out_mat)
+pvals <- c(pvals, total_angle_table[upper.tri(total_angle_table)])
+print("Total angles")
+total_angle_table
+cat("\n")
+total_diff_table  <- pairwise_pvals(total_out_mat, 0)
+print("Total magnitudes")
+total_diff_table
+
+```
+
+Number of individuals per final branch
+
+```{r n of branches}
+covs <- covs %>% mutate(cluster_final = factor(cluster_initial, labels = c(1,2,3)) )
+summary(covs$cluster_final)
+cat("\n")
+summary(interaction(covs$cluster_final, as.factor(covs$Sex)))
+
+#Adding final cluster to tot_samples object
+tot_samples <- tot_samples %>% bind_cols(covs %>% select(cluster_final))
+```
+
+## Admixture analysis
+
+### Homogeneous pops
+
+Getting individuals for homogeneous pops
+
+```{r homogenous pops}
+h_group <- rep(NA, length(common_ids$ID))
+for( i in 1:6){
+  h_group[adk6[,i] > 0.7] <- i 
+}
+summary(as.factor(h_group))
+```
+
+We'll use only pops 1, 2, 5, and 6, because of the small sample sizes in the other 2. 
+
+```{r}
+#Getting subset of whole sample from groups 1, 2, 5, and 6
+tot_samples <- bind_cols(tot_samples, as.tibble(h_group))
+colnames(tot_samples)[length(tot_samples)] <- "h_group"
+tot_samples$h_group[ tot_samples$h_group == 3 | tot_samples$h_group == 4] <- NA
+
+#Summaries by Sex x Pop
+tot_samples %>% select(h_group, Sex, Age, Height, Weight, BMI) %>% group_by(Sex, h_group) %>%
+  summarise_all(funs(mean))
+
+#Sample sizes
+summary(interaction(tot_samples$h_group, as.factor(tot_samples$Sex)))
+
+```
+
+```{r h pop comparison}
+#Getting response and predictor matrices
+matrix <- tot_samples %>% filter(!is.na(h_group)) %>% select(starts_with("PC"))
+covs   <- tot_samples %>% filter(!is.na(h_group)) %>% select(c("Age", "Height", "BMI","Sex", "h_group"))
+covs[,c(1:3)] <- scale(covs[,c(1:3)])
+
+#Getting model matrix, and runnning vector change
+model_mat  <- model.matrix( ~ Age + Height + BMI + Sex * as.factor(h_group), data=covs)
+nonallo_covs_mat <- model_mat[,1:4]
+total_covs_mat   <- model_mat[,c(1:2,4)]
+x_mat_red  <- model_mat[,5:8]
+x_mat_full <- model_mat[,5:11]
+nonallo_out_mat <- run_vector_change(matrix, nonallo_covs_mat, x_mat_red, x_mat_full, permute=9999)
+total_out_mat   <- run_vector_change(matrix, total_covs_mat, x_mat_red, x_mat_full, permute=9999)
+
+#Printing pairwise tables
+nonallo_angle_table <- pairwise_pvals(nonallo_out_mat)
+pvals <- nonallo_angle_table[upper.tri(nonallo_angle_table)]
+print("Non allometric angles")
+nonallo_angle_table
+cat("\n")
+nonallo_diff_table  <- pairwise_pvals(nonallo_out_mat, 0)
+print("Non allometric magnitudes")
+nonallo_diff_table
+cat("\n")
+
+total_angle_table <- pairwise_pvals(total_out_mat)
+pvals <- c(pvals, total_angle_table[upper.tri(total_angle_table)])
+print("Total angles")
+total_angle_table
+cat("\n")
+total_diff_table  <- pairwise_pvals(total_out_mat, 0)
+print("Total magnitudes")
+total_diff_table
+```
+
+### Dividing our entire sample
+
+```{r}
+#Create grouping variable t_group, containg the cluster that each individuals has more of their ancestry from
+t_group <- apply(adk6, 1, function(x) which.max(x))
+summary(as.factor(t_group))
+
+#Getting subset of whole sample from groups 
+tot_samples <- bind_cols(tot_samples, as.tibble(t_group))
+colnames(tot_samples)[length(tot_samples)] <- "t_group"
+
+#Sample sizes
+summary(interaction(tot_samples$t_group, tot_samples$Sex))
+```
+
+```{r t pop comparison}
+#Getting response and predictor matrices
+matrix <- tot_samples %>% select(starts_with("PC"))
+covs   <- tot_samples %>% select(c("Age", "Height", "BMI","Sex", "t_group"))
+covs[,c(1:3)] <- scale(covs[,c(1:3)])
+
+#Getting model matrix, and runnning vector change
+model_mat  <- model.matrix( ~ Age + Height + BMI + Sex * as.factor(t_group), data=covs)
+nonallo_covs_mat <- model_mat[,1:4]
+total_covs_mat   <- model_mat[,c(1:2,4)]
+x_mat_red  <- model_mat[,5:10]
+x_mat_full <- model_mat[,5:15]
+nonallo_out_mat <- run_vector_change(matrix, nonallo_covs_mat, x_mat_red, x_mat_full, permute=9999)
+total_out_mat   <- run_vector_change(matrix, total_covs_mat, x_mat_red, x_mat_full, permute=9999)
+
+#Printing pairwise tables
+nonallo_angle_table <- pairwise_pvals(nonallo_out_mat)
+pvals <- c(pvals, nonallo_angle_table[upper.tri(nonallo_angle_table)])
+print("Non allometric angles")
+nonallo_angle_table
+cat("\n")
+nonallo_diff_table  <- pairwise_pvals(nonallo_out_mat, 0)
+print("Non allometric magnitues")
+nonallo_diff_table
+cat("\n")
+
+total_angle_table <- pairwise_pvals(total_out_mat)
+pvals <- c(pvals, total_angle_table[upper.tri(total_angle_table)])
+print("Total angles")
+total_angle_table
+cat("\n")
+total_diff_table  <- pairwise_pvals(total_out_mat, 0)
+print("Total magnitudes")
+total_diff_table
+```
+
+## Saving datasets
+
+```{r saving}
+setwd(paste(path, "/Results", sep = ""))
+write_csv(tot_samples, "tot_samples.csv")
+```

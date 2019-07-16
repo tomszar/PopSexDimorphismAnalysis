@@ -1,0 +1,87 @@
+---
+title: Table S4
+output:
+  html_document: default
+---
+
+In this notebook we'll generate table S4, which contains the p-values and Wilks lambda from the MANOVA analysis
+
+## Preliminaries
+
+Load libraries
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(tidyverse)
+#For latex()
+library(Hmisc)
+#For Manova
+library(car)
+```
+
+Read databases
+
+```{r databases, warning=FALSE, message=FALSE}
+setwd('../..')
+path <- getwd()
+
+#Reading tot_samples database
+setwd(paste(path, "/Results", sep = ""))
+tot_samples <- read_csv("tot_samples.csv")
+tot_samples <- tot_samples %>% mutate(Sex = as.factor(Sex))
+```
+
+## Table S4
+
+We first assemble the table, and then we generate the latex output. We just copied and pasted the result on the corresponding file
+
+```{r testing}
+keep   <- tot_samples$cluster_final == 1 | tot_samples$cluster_final == 3
+matrix <- tot_samples %>% select(starts_with("PC"))
+matrix <- matrix[keep,] 
+covs   <- tot_samples %>% select(c("Age", "Height", "BMI","Sex", "cluster_final"))
+covs[,c(1:3)] <- scale(covs[,c(1:3)])
+covs   <- covs[keep,]
+
+#Getting model matrix, and runnning vector change
+fit  <- lm(as.matrix(matrix) ~ covs$Age + covs$Height + covs$BMI + 
+            covs$Sex * as.factor(covs$cluster_final))
+Manova(fit, type = 2, test.statistic = "Wilks")
+
+model_mat  <- model.matrix( ~ Age + Height + BMI + Sex * as.factor(covs$cluster_final), data=covs)
+covs_mat <- model_mat[,1:4]
+ngroups  <- length(levels(as.factor(covs$cluster_final )))
+red_end  <- 5 + (ngroups - 1)
+full_end <- 5 + ( (ngroups - 1) * 2)
+x_mat_red  <- model_mat[,5:red_end]
+x_mat_full <- model_mat[,5:full_end]
+
+lambda <- get_manova(matrix, covs_mat, x_mat_red, x_mat_full)
+```
+
+```{r manova function}
+get_manova_int <- function(dat){
+  n_initial <- max(dat$cluster_initial)
+  alpha     <- 0.05/10
+  for(i in seq(n_initial)){
+    
+  }
+} 
+```
+
+
+```{r table}
+
+
+tab_latex <- latex(tab, file="", title="", 
+                   caption="Sample sizes for the different fineStructure groups", 
+                   label = "", col.just=rep("c",11),
+                    rowlabel.just="c", booktabs = TRUE)
+
+```
+
+## Session info
+
+```{r session}
+print(sessionInfo())
+```
+

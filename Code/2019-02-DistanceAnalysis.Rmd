@@ -1,0 +1,138 @@
+---
+title: Distance Analysis
+output:
+  html_document: default
+---
+
+The following script contains the distance analysis. Specifically, we wanted to know whether differences in face shape sexual dimorphism increase with increasing genetic distance. To do that we ran a Mantel test between the genetic distance (haplotype-based TVD) and the angle between vectors of sex dimorphism.
+
+## Preliminaries
+
+Load libraries
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(tidyverse)
+#For mantel test
+library(ade4)
+#For latex
+library(Hmisc)
+library(RRPP)
+source("PhenotypicChangeTests.R")
+```
+
+Read databases
+
+```{r databases, warning=FALSE, message=FALSE}
+setwd('..')
+path <- getwd()
+
+#Reading tot_samples database
+setwd(paste(path, "/Results", sep = ""))
+tot_samples <- read_csv("tot_samples.csv")
+tot_samples <- tot_samples %>% mutate(Sex = as.factor(Sex))
+
+#Reading pop coancestry matrix
+setwd(paste(path, "/Results", sep = ""))
+tvds         <- read_csv("tvds.csv", col_names = FALSE)
+```
+
+## Analysis 
+
+Mantel test
+
+```{r}
+#Generating distances from angles between initial leaves
+matrix <- tot_samples %>% select(starts_with("PC"))
+covs   <- tot_samples %>% select(c("Age", "Height", "BMI","Sex", "cluster_initial"))
+covs[,c(1:3)] <- scale(covs[,c(1:3)])
+
+#Getting model matrix, and runnning vector change
+model_mat  <- model.matrix( ~ Age + Height + BMI + Sex * as.factor(cluster_initial), data=covs)
+nonallo_covs_mat <- model_mat[,1:4]
+x_mat_red  <- model_mat[,5:14]
+x_mat_full <- model_mat[,5:23]
+nonallo_out_mat <- run_vector_change(matrix, nonallo_covs_mat, x_mat_red, x_mat_full, permute=9999)
+
+#Printing pairwise tables
+nonallo_angle_table <- as.dist(pairwise_pvals(nonallo_out_mat))
+
+mantel.rtest(as.dist(tvds), nonallo_angle_table, nrepet = 9999)
+#plot(mantel.rtest(as.dist(tvds), nonallo_angle_table, nrepet = 9999))
+```
+
+Morphological distance
+
+```{r morpho}
+y.mat <- as.matrix(select(tot_samples, starts_with("PC") ))
+covs  <- select(tot_samples, c("Age", "Height", "BMI", "cluster_initial"))
+covs[,c(1:3)] <- scale(covs[,c(1:3)])
+covs$cluster_initial <- as.factor(covs$cluster_initial)
+model_mat  <- model.matrix( ~ Age + Height + BMI + cluster_initial, data=covs)
+
+b.mat <- solve((t(model_mat) %*% model_mat)) %*% (t(model_mat) %*% y.mat)
+
+base <- c(1, rep(0,3)) # Base contains the intercept and zeros equal to the number of covariates 
+base <- t(replicate(10, base))
+pops <- rbind(c(0,0,0,0,0,0,0,0,0), 
+              c(1,0,0,0,0,0,0,0,0), 
+              c(0,1,0,0,0,0,0,0,0), 
+              c(0,0,1,0,0,0,0,0,0), 
+              c(0,0,0,1,0,0,0,0,0), 
+              c(0,0,0,0,1,0,0,0,0),
+              c(0,0,0,0,0,1,0,0,0),
+              c(0,0,0,0,0,0,1,0,0),
+              c(0,0,0,0,0,0,0,1,0),
+              c(0,0,0,0,0,0,0,0,1))
+
+x.ls <- cbind(base, pops)
+obs.ls <- x.ls %*% b.mat
+
+madist <- matrix(0, nrow = 10, ncol = 10)
+testdist <- matrix(0, nrow = 10, ncol = 10)
+for(i in 1:9){
+  for(l in 2:10){
+    if(i<l){
+      keepi  <- covs$cluster_initial == i
+      keepl  <- covs$cluster_initial == l
+      covi   <- cov(y.mat[keepi,])
+      covl   <- cov(y.mat[keepl,])
+      covpool <- (sum(keepi)*covi + sum(keepl)*covl) / (sum(keepi) + sum(keepl) - 2)
+      d <- t(obs.ls[i,] - obs.ls[l,]) %*% solve(covpool) %*% (obs.ls[i,] - obs.ls[l,])
+      madist[l,i] <- d 
+} } }
+
+mantel.rtest(as.dist(madist), nonallo_angle_table, nrepet = 9999)
+
+```
+
+Latex table
+
+```{r latextab}
+tab  <- as.matrix(nonallo_angle_table)
+tab2 <- as.matrix(nonallo_angle_table)
+tab[lower.tri(tab)]   <- as.matrix(tvds)[lower.tri(as.matrix(tvds))]
+tab2[lower.tri(tab2)] <- as.matrix(madist)[lower.tri(as.matrix(madist))]
+names <- paste("L", seq(1,10), sep = "")
+rownames(tab) <- names
+colnames(tab) <- names
+diag(tab) <- NA
+rownames(tab2) <- names
+colnames(tab2) <- names
+diag(tab2) <- NA
+
+tab_latex <- latex(round(tab, 3), file="", title="", 
+                   caption="Between populations distance matrix. Upper diagonal show the $\\theta$ values, while lower diagonal shows TVDS values", 
+                   label = "", booktabs = TRUE)
+
+tab_latex <- latex(round(tab2, 3), file="", title="", 
+                   caption="Between populations distance matrix. Upper diagonal show the $\\theta$ values, while lower diagonal shows Mahalanovis $D^{2}$", 
+                   label = "", booktabs = TRUE)
+```
+
+Export table
+
+```{r exporttable}
+setwd(paste(path, "/Results", sep = ""))
+write_csv(as.data.frame(tab), "distance_matrices.csv", col_names = FALSE)
+write_csv(as.data.frame(tab2), "distance_matrices2.csv", col_names = FALSE)
+```

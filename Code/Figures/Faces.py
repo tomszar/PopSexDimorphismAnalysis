@@ -1,14 +1,46 @@
-class MultipleFaceShapes(object):
-	landmark_matrix = 0
-	facets  = 0 
-	normals = 0
-	sh      = 0
-	n_land  = 0
-	n_obs   = 0
+class LandmarkMatrix(object):
+	'''
+	Class LandmarkMatrix contains a landmark matrix and its corresponding information
+	- raw_matrix: the raw landmark matrix
+	- shape_matrix: the result of the GPA on the raw landmark matrix
+	- cs: centroid size
+	- ids: list of IDs in the same order as the raw_matrix
+	- facets: connection between landmarks
+	- 
 
-#Try to create an object for multiple faceshapes
+	'''
+	raw_matrix   = 0
+	shape_matrix = 0
+	cs     = 0
+	ids    = 0
+	facets = 0
+	n_ind  = 0
+	n_land = 0
+
+	def __init__(self, raw_matrix=0, shape_matrix=0, cs=0, ids=0, facets=0, n_ind=0, n_land=0):
+		self.raw_matrix   = raw_matrix
+		self.shape_matrix = shape_matrix
+		self.cs     = cs
+		self.ids    = ids
+		self.facets = facets
+		self.n_ind  = n_ind
+		self.n_land = n_land
+
+
+
+#Try to create an object for multiple faceshapes or landmarks, and make FaceShape and inheritance of it
+
 
 class FaceShape(object):
+	'''
+	Class FaceShape contains information on a single face
+	- landmarks: vertex information, should contain the x, y, z coordinates
+	- facets: connection between landmarks
+	- normals: per vertex normal computed as a weighted average of a per facet normal
+	- sh: shape to store the landmark information
+	- n_land: number of landmarks
+	- color: rgb color code as proportion
+	'''
 	landmarks = 0
 	facets    = 0
 	normals   = 0
@@ -83,8 +115,6 @@ class FaceShape(object):
 		Take screenshot of rendered 3D face
 		Usage
 		Input:
-			- landmarks: set of 3D landmarks in one single row, in X,Y,Z consecutive fashion
-			- facets: the facets that describe the surface from the 3D landmarks
 			- profile: whether to take the screenshot from frontal, midway, or profile (0/1/2)
 			- colormap: the colormap to be applied to the 3D surface to the scalar argument
 			- colortype: the colormap type
@@ -160,8 +190,68 @@ class FaceShape(object):
 
 		mlab.show()
 
-	def save_obj(self):
-		pass
+	def save_obj(self, path, scale = 1):
+		'''
+		Save the FaceShape object as .obj file
+		Usage:
+			- path: the file name or absolute path to save file
+			- scale: the scaling factor of the face (default = 1)
+		'''
+		#Importing libraries
+		import numpy as np
+		import pandas as pd
+
+		#Removing 0 based index
+		facets = self.facets + 1
+		lands  = self.landmarks * scale
+
+		vs = np.array(np.repeat("v", self.landmarks.shape[0]), ndmin=2)
+		fs = np.array(np.repeat("f", self.facets.shape[0]), ndmin=2)
+
+		a = np.concatenate( (vs.T, lands), axis=1)
+		b = np.concatenate( (fs.T, facets), axis=1)
+
+		obj_file = np.concatenate((a,b))
+		obj_file = pd.DataFrame(obj_file)
+
+		obj_file.to_csv(path, sep=" ", header=False, index=False)
+        
+        
+	def create_video(self, face2, name="movie.mp4", profile=1):
+		'''
+		Create video of transformation between 2 faces
+		Usage
+		Input:
+			- face2: the end face to generate the transformation
+			- profile: whether to take the screenshot from frontal, midway, or profile (0/1/2)
+		Output:
+			- mp4 video
+		'''
+        #Import libraries
+		import os, glob
+		import matplotlib.image as img
+        
+		land1 = self.landmarks
+		land2 = face2.landmarks
+
+		if not os.path.exists("Temp"):
+			os.makedirs("Temp")
+		else:
+			for file in glob.glob("Temp/*"):
+				os.remove(file)
+                
+		for i in range(0,201):
+			if i <= 100:
+				lands = ( (land1/100)*(100-i) ) + ( (land2/100)*(i) )
+			elif i > 100:
+				lands = ( (land1/100)*(i-100) ) + ( (land2/100)*(200-i) )  
+			final_face = FaceShape(lands, self.facets)
+			outimg     = final_face.take_screenshot(profile=profile)
+			outname    = "Temp/Test" + str(i) + ".png"
+			img.imsave(outname, outimg, dpi=300)
+		
+		os.system("ffmpeg -r 10 -i Temp/Test%0d.png -vcodec mpeg4 -y " + name)
+		
 
 	
 def get_vertex_normals(landmarks, facets):

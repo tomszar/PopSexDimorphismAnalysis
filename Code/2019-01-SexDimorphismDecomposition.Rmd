@@ -1,0 +1,225 @@
+---
+title: Face shape sexual dimorphism decomposition
+output:
+  html_document: default
+---
+
+In this notebook we'll investigate the decomposition of face shape sexual dimorphism into allometric and non-allometric components
+
+## Preliminaries
+
+Load libraries
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(car)
+library(boot)
+library(Hmisc)
+source("PhenotypicChangeTests.R")
+```
+
+Read databases
+
+```{r databases, warning=FALSE, message=FALSE}
+setwd('..')
+path <- getwd()
+
+#Reading tot_samples database
+setwd(paste(path, "/Results", sep = ""))
+tot_samples <- read_csv("tot_samples.csv")
+tot_samples <- tot_samples %>% mutate(Sex = as.factor(Sex))
+```
+
+Defining functions
+
+```{r functions}
+get_allo_comparison <- function(dat, i){
+  #
+  # Function to obtain the comparison (angle and length difference) between the total and allometric portion of sexual dimorphism
+  # Dat covariates should be scaled and contain the face PCs as well
+  # Returns a vector with the angle and length difference
+  #
+  
+  dat <- dat[i,]
+  
+  #Regression
+  fit <- lm(as.matrix(select(dat, starts_with("PC"))) ~ dat$Age + dat$BMI + dat$Sex )
+  #Getting sex vectors
+  #Sex vector = male - female
+  tot_coeff <- ( (fit$coefficients[1,] + fit$coefficients[4,] ) - fit$coefficients[1,] )
+  
+  #With height
+  fit <- lm(as.matrix(select(dat, starts_with("PC"))) ~ dat$Age + dat$BMI + dat$Sex + dat$Height)
+
+  #Get difference by sex
+  mean_fem  <- dat %>% filter(Sex == "Female") %>% select(Sex, Height) %>% summarise(mean(Height))
+  mean_male <- dat %>% filter(Sex == "Male") %>% select(Sex, Height) %>% summarise(mean(Height))
+  diff       <- as.numeric(mean_male - mean_fem)
+  allo_coeff <- ( fit$coefficients[5,] * diff  )
+  
+  #Angles
+  De_tot  <- as.vector(sqrt(t(tot_coeff) %*% tot_coeff))
+  De_allo <- as.vector(sqrt(t(allo_coeff) %*% allo_coeff))
+  allo_angle <- acos( t( tot_coeff / De_tot) %*% (allo_coeff / De_allo)) * 180/pi
+  allo_diff  <- abs(De_tot - De_allo)
+  stats      <- c(allo_angle, allo_diff)
+  return(stats)
+}
+
+get_nonallo_comparison <- function(dat, i){
+  #
+  # Function to obtain the comparison (angle and length difference) between the total and non-allometric portion of sexual dimorphism
+  # Dat covariates should be scaled and contain the face PCs as well
+  # Returns a vector with the angle and length difference
+  #
+  
+  dat <- dat[i,]
+  #Regression
+  fit <- lm(as.matrix(select(dat, starts_with("PC"))) ~ dat$Age + dat$BMI + dat$Sex )
+  #Getting sex vectors
+  #Sex vector = male - female
+  tot_coeff <- ( (fit$coefficients[1,] + fit$coefficients[4,] ) - fit$coefficients[1,] )
+  
+  #With height
+  fit <- lm(as.matrix(select(dat, starts_with("PC"))) ~ dat$Age + dat$BMI + dat$Sex + dat$Height)
+  non_coeff  <- ( (fit$coefficients[1,] + fit$coefficients[4,] ) - fit$coefficients[1,] )
+  
+  #Angles
+  De_tot  <- as.vector(sqrt(t(tot_coeff) %*% tot_coeff))
+  De_non  <- as.vector(sqrt(t(non_coeff) %*% non_coeff))
+  non_angle  <- acos( t( tot_coeff / De_tot) %*% (non_coeff / De_non)) * 180/pi
+  non_diff  <- abs(De_tot - De_non)
+  stats      <- c(non_angle, non_diff)
+  return(stats)
+}
+```
+
+
+## Analysis 
+
+```{r allometry_initial table}
+#Creating table for initial cluster
+ngroups <- length(levels(as.factor(tot_samples$cluster_initial)))
+allometry_initial_cluster <- matrix(0, nrow = 4, ncol = ngroups)
+rownames(allometry_initial_cluster) <- c("allometry/total angle", "non-allometry/total angle", "allometry/total diff", "non-allometry/total diff")
+colnames(allometry_initial_cluster) <- paste("L", rep(seq(1,ngroups)), sep="")
+
+#row = 1
+set.seed(563)
+for(i in 1:ngroups){
+  #Subset sample by leaf cluster
+  sub <- tot_samples %>% filter(cluster_initial == i)
+  sub[,3:6] <- scale(sub[,3:6])
+  
+  boot_allo_comparison <- boot(sub, get_allo_comparison, 999, strata=sub$Sex)
+  boot_non_comparison  <- boot(sub, get_nonallo_comparison, 999, strata=sub$Sex)
+  boot_allo_angle_ci <- boot.ci(boot_allo_comparison, type = "basic", index = 1)
+  boot_non_angle_ci  <- boot.ci(boot_non_comparison, type = "basic", index = 1)
+  boot_allo_diff_ci <- boot.ci(boot_allo_comparison, type = "basic", index = 2)
+  boot_non_diff_ci  <- boot.ci(boot_non_comparison, type = "basic", index = 2)
+  
+  #Create string for CIs and values
+  #Use \makecell{} for breaks within cells
+  theta_allo    <- paste("\\makecell{",
+                         round(boot_allo_comparison$t0[1], 2), "\\\\ (", 
+                         round(boot_allo_angle_ci$basic[,4], 2), " - ", 
+                         round(boot_allo_angle_ci$basic[,5],2 ), ")}", sep = "")
+  
+  theta_nonallo <- paste("\\makecell{",
+                         round(boot_non_comparison$t0[1], 2), "\\\\ (", 
+                         round(boot_non_angle_ci$basic[,4], 2), " - ", 
+                         round(boot_non_angle_ci$basic[,5],2 ), ")}", sep = "")
+  
+  de_allo <- paste("\\makecell{",
+                   round(boot_allo_comparison$t0[2], 2), "\\\\ (", 
+                   round(boot_allo_diff_ci$basic[,4], 2), " - ", 
+                   round(boot_allo_diff_ci$basic[,5],2 ), ")}", sep = "")
+  
+  de_nonallo <- paste("\\makecell{",
+                      round(boot_non_comparison$t0[2], 2), "\\\\ (", 
+                      round(boot_non_diff_ci$basic[,4], 2), " - ", 
+                      round(boot_non_diff_ci$basic[,5],2 ), ")}", sep = "")
+  
+  #Paste values and CIs
+  allometry_initial_cluster[1,i] <- theta_allo
+  allometry_initial_cluster[2,i] <- theta_nonallo
+  allometry_initial_cluster[3,i] <- de_allo
+  allometry_initial_cluster[4,i] <- de_nonallo
+  
+}
+
+allometry_initial_cluster
+```
+
+```{r table initial}
+rownames(allometry_initial_cluster) <- rep(c("Allometric", "Non-allometric"),2 )
+cgroup   <- c("$\\theta$", "$\\Delta D$")
+n.cgroup <- rep(2,2)
+latex(t(allometry_initial_cluster), file="", title="", 
+      caption="Difference in direction ($\\theta$) and magnitude ($\\Delta D$) between the allometric and non-allometric component with respect to total sexual dimorphism using the initial 10 leaves. In parenthesis the 95\\% CI from a bootstrap with 999 permutations", 
+      cgroup = cgroup, n.cgroup = n.cgroup,
+      label = "", booktabs = TRUE)
+```
+
+
+```{r allometry_final table}
+#Creating final table
+ngroups <- length(levels(as.factor(tot_samples$cluster_final)))
+allometry_final_cluster <- matrix(0, nrow = 4, ncol = ngroups)
+rownames(allometry_final_cluster) <- c("allometry/total angle", "non-allometry/total angle", "allometry/total diff", "non-allometry/total diff")
+colnames(allometry_final_cluster) <- c("A", "B", "C")
+
+for(i in 1:ngroups){
+  #Subset sample by leaf cluster
+  sub <- tot_samples %>% filter(cluster_final == i)
+  sub[,3:6] <- scale(sub[,3:6])
+  
+  boot_allo_comparison <- boot(sub, get_allo_comparison, 999, strata=sub$Sex)
+  boot_non_comparison  <- boot(sub, get_nonallo_comparison, 999, strata=sub$Sex)
+  boot_allo_angle_ci <- boot.ci(boot_allo_comparison, type = "basic", index = 1)
+  boot_non_angle_ci  <- boot.ci(boot_non_comparison, type = "basic", index = 1)
+  boot_allo_diff_ci <- boot.ci(boot_allo_comparison, type = "basic", index = 2)
+  boot_non_diff_ci  <- boot.ci(boot_non_comparison, type = "basic", index = 2)
+  
+  #Create string for CIs and values
+  #Use \makecell{} for breaks within cells
+  theta_allo    <- paste("\\makecell{",
+                         round(boot_allo_comparison$t0[1], 2), "\\\\ (", 
+                         round(boot_allo_angle_ci$basic[,4], 2), " - ", 
+                         round(boot_allo_angle_ci$basic[,5],2 ), ")}", sep = "")
+  
+  theta_nonallo <- paste("\\makecell{",
+                         round(boot_non_comparison$t0[1], 2), "\\\\ (", 
+                         round(boot_non_angle_ci$basic[,4], 2), " - ", 
+                         round(boot_non_angle_ci$basic[,5],2 ), ")}", sep = "")
+  
+  de_allo <- paste("\\makecell{",
+                   round(boot_allo_comparison$t0[2], 2), "\\\\ (", 
+                   round(boot_allo_diff_ci$basic[,4], 2), " - ", 
+                   round(boot_allo_diff_ci$basic[,5],2 ), ")}", sep = "")
+  
+  de_nonallo <- paste("\\makecell{",
+                      round(boot_non_comparison$t0[2], 2), "\\\\ (", 
+                      round(boot_non_diff_ci$basic[,4], 2), " - ", 
+                      round(boot_non_diff_ci$basic[,5],2 ), ")}", sep = "")
+  
+  #Paste values and CIs
+  allometry_final_cluster[1,i] <- theta_allo
+  allometry_final_cluster[2,i] <- theta_nonallo
+  allometry_final_cluster[3,i] <- de_allo
+  allometry_final_cluster[4,i] <- de_nonallo
+  
+}
+
+allometry_final_cluster
+```
+
+```{r table final}
+rownames(allometry_final_cluster) <- rep(c("Allometric", "Non-allometric"),2 )
+cgroup   <- c("$\\theta$", "$\\Delta D$")
+n.cgroup <- rep(2,2)
+latex(t(allometry_final_cluster), file="", title="", 
+      caption="Difference in direction ($\\theta$) and magnitude ($\\Delta D$) between the allometric and non-allometric component with respect to total sexual dimorphism using the final 3 branches. In parenthesis the 95\\% CI from a bootstrap with 999 permutations", 
+      cgroup = cgroup, n.cgroup = n.cgroup,
+      label = "table:AlloBranchComparison", booktabs = TRUE)
+```

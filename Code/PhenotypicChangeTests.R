@@ -352,31 +352,45 @@ get_manova <- function(y.mat, covs, x.mat.red, x.mat.full, permute=9999){
   #
   
   # 1. Setting data as matrices and setting general variables
+  library(psych)
   y.mat      <- as.matrix(y.mat)
   covs       <- as.matrix(covs)
   ncovs      <- ncol(covs) #number of covariates
   ngroups    <- ncol(x.mat.red) #number of groups
+  n          <- nrow(x.mat.full)
   x.mat.red  <- cbind(covs, as.matrix(x.mat.red)) # Full X matrix
   x.mat.full <- cbind(covs, as.matrix(x.mat.full)) # Reduced X matrix
+  x.mat.null <- as.matrix(data.frame(rep( 1, n )))
+  ks         <- ncol(x.mat.full)
   
   # 2. Estimate parameters for full and reduced matrices
   b.mat.full <- solve((t(x.mat.full) %*% x.mat.full)) %*% (t(x.mat.full) %*% y.mat)
   b.mat.red  <- solve((t(x.mat.red) %*% x.mat.red)) %*% (t(x.mat.red) %*% y.mat)
+  b.mat.null <- solve((t(x.mat.null) %*% x.mat.null)) %*% (t(x.mat.null) %*% y.mat)
   
-  # 3. Estimate parameters for Manova
-  hache  <- ( t(b.mat.full) %*% t(x.mat.full) %*% y.mat ) -  ( t(b.mat.red) %*% t(x.mat.red) %*% y.mat )
-  e.full <- ( t(y.mat) %*% y.mat ) - ( t(b.mat.full) %*% t(x.mat.full) %*% y.mat )
-  e.red  <- ( t(y.mat) %*% y.mat ) - ( t(b.mat.red) %*% t(x.mat.red) %*% y.mat )
-  lambda <- det(e.full) / det(e.red)
+  # 3. Estimate parameters for Manova and test statistics
+  e.full <- y.mat - ( x.mat.full %*% b.mat.full )
+  e.red  <- y.mat - ( x.mat.red %*% b.mat.red ) # Resdiuals of reduced mode (these are the permuted units as well)
+  e.null <- y.mat - ( x.mat.null %*% b.mat.null )
+  
+  #SSs
+  sumsq <- tr(( t(e.red) %*% e.red ) - ( t(e.full) %*% e.full ))
+  
+  #R^2
+  rsqr  <- sumsq / tr(t(e.null) %*% e.null )
+  
+  #F-values
+  fm <- ( sumsq / ( ks-1 ) ) / ( tr( t(e.full) %*% e.full ) / n - ks - 1)
   
   # 4. Permutation for p-value by residual randomization
-  y.hat <- x.mat.red %*% b.mat.red     # Predicted values from reduced model
-  y.res <- y.mat - y.hat               # Resdiuals of reduced mode (these are the permuted units)
+  y.hat.red <- x.mat.red %*% b.mat.red     # Predicted values from reduced model
   
   # PERMUTATION PROCEDURE
   # Need to set-up distributions to be generated
-  dist.lambda     <- matrix(0, nrow = (permute + 1), ncol = 1)
-  dist.lambda[1,] <- lambda # Observed values are first random values
+  stat.table      <- matrix(0, nrow = (permute + 1), ncol = 3)
+  stat.table[1,1] <- sumsq # Observed values are first random values
+  stat.table[1,2] <- rsqr
+  stat.table[1,3] <- fm
   
   # Create an array from 1 to number of object in data set
   # This will be randomized later
@@ -384,23 +398,32 @@ get_manova <- function(y.mat, covs, x.mat.red, x.mat.full, permute=9999){
   
   for (i in 1:permute){
     line.rand  <- sample(line, replace=FALSE)
-    y.res.temp <- cbind(line.rand, y.res)
+    e.red.temp <- cbind(line.rand, e.red)
     z <- (order(line.rand))
-    y.res.temp2 <- as.matrix(y.res.temp[z,])
-    y.res.rand  <- y.res.temp2[,-1]  # Rows of residuals are now randomized
+    e.red.temp2 <- as.matrix(e.red.temp[z,])
+    e.red.rand  <- e.red.temp2[,-1]  # Rows of residuals are now randomized
     
     # Create random values
-    y.rand <- y.hat + y.res.rand
+    y.rand <- y.hat.red + e.red.rand
     
-    # Estimate parameters
+    # Estimate parameters and statistics
     b.mat.rand <- solve((t(x.mat.full)%*%x.mat.full))%*%(t(x.mat.full)%*%y.rand)
+    e.rand     <- y.rand - ( x.mat.full %*% b.mat.rand )
     
-    hache.rand  <- ( t(b.mat.rand) %*% t(x.mat.full) %*% y.rand ) -  ( t(b.mat.red) %*% t(x.mat.red) %*% y.mat )
-    e.full.rand <- ( t(y.mat) %*% y.mat ) - ( t(b.mat.rand) %*% t(x.mat.full) %*% y.mat )
-    
-    lambda.rand <- det(e.full.rand) / det(e.full.rand + hache.rand)
-    dist.lambda[i+1,] <- lambda.rand
+    #SSs
+    sumsq.rand <- tr( ( t(e.red) %*% e.red ) - ( t(e.rand) %*% e.rand ) )
+
+    #R^2
+    rsqr.rand  <- sumsq.rand / tr(t(e.null) %*% e.null )
+	
+	#F-values
+  	fm.rand <- ( sumsq.rand / ( ks-1 ) ) / ( tr( t(e.full) %*% e.full ) / n - ks - 1)
+
+  	#Adding stats
+  	stat.table[i+1,1] <- sumsq.rand
+  	stat.table[i+1,2] <- rsqr.rand
+  	stat.table[i+1,3] <- fm.rand
   }
   
-  return(dist.lambda)
+  return(stat.table)
 }

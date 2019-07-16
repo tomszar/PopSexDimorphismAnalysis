@@ -1,0 +1,90 @@
+---
+title: Table S2
+output:
+  html_document: default
+---
+
+In this notebook we'll generate table S2, which shows the Mean values and 95% CI for covariates (Age, Height, Weight, and BMI) separated by Sex and Leaf.
+
+## Preliminaries
+
+Load libraries
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(tidyverse)
+#For CI
+library(Rmisc)
+#For latex()
+library(Hmisc)
+```
+
+Read databases
+
+```{r databases, warning=FALSE, message=FALSE}
+setwd('../..')
+path <- getwd()
+
+#Reading tot_samples database
+setwd(paste(path, "/Results", sep = ""))
+tot_samples <- read_csv("tot_samples.csv")
+tot_samples <- tot_samples %>% mutate(Sex = as.factor(Sex))
+```
+
+## Table
+
+We first assemble the table, and then we generate the latex output. We just copied and pasted the result on the corresponding file
+
+```{r functions}
+ngroups <- 10
+get_mean_ci <- function(dat, sex){
+  # Function to obtain the mean value and the CI between ()
+  vals <- dat %>% filter(Sex == sex) %>% select(Age, Height, Weight, BMI) %>% 
+    summarise_all(funs(mean = CI(.)[2], low = CI(.)[3], up = CI(.)[1] ))
+  vals <- c(round(vals, 2))
+  #Correct order (Mean Low Up)
+  vals <- unlist(c(t(matrix(vals, nrow = 4))))
+  ns   <- length(vals)
+  vals_str <- c()
+  for(i in seq(1,ns,3)){
+    vals_temp <- paste("\\makecell{",
+                    vals[i], "\\\\(",
+                    vals[i+1], " - ",
+                    vals[i+2], ")}",
+                    sep = "")
+    vals_str  <- c(vals_str, vals_temp)
+  }
+  return(vals_str)
+}
+
+tot_vals <- c()
+for(i in 1:ngroups){
+  sub   <- tot_samples %>% filter(cluster_initial == i)
+  vals_fem  <- get_mean_ci(sub, "Female")
+  vals_male <- get_mean_ci(sub, "Male")
+  s  <- cbind(vals_fem[1], vals_male[1], 
+              vals_fem[2], vals_male[2], 
+              vals_fem[3], vals_male[3], 
+              vals_fem[4], vals_male[4])
+  tot_vals <- rbind(tot_vals, s)
+}
+
+colnames(tot_vals) <- rep(c("Female", "Male"), 4)
+rownames(tot_vals) <- paste("L", 1:ngroups, sep = "")
+cgroup   <- c("Age", "Height (cm)", "Weight (kg)", "BMI")
+n.cgroup <- rep(2,4)
+
+tab_latex <- latex(tot_vals, file="", title="", 
+                   caption="Mean values and (95\\% CI) for covariates separated by Sex and Leaf (L)", 
+                   label = "", 
+                   cgroup = cgroup, n.cgroup = n.cgroup,
+                   size = "footnotesize", col.just=rep("c",8),
+                   booktabs = TRUE, landscape = TRUE)
+
+```
+
+## Session info
+
+```{r session}
+print(sessionInfo())
+```
+
