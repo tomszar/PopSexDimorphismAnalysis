@@ -110,7 +110,7 @@ class FaceShape(object):
 		euc_dist = np.array(np.sqrt(np.sum(np.power(self.landmarks - faceshape.landmarks, 2), axis=1))).flatten()
 		return euc_dist
 		
-	def take_screenshot(self, profile = 0, colormap = None, colortype = 'GnBu'):
+	def take_screenshot(self, profile = 0, colormap = None, colortype = 'RdBu'):
 		'''
 		Take screenshot of rendered 3D face
 		Usage
@@ -124,6 +124,10 @@ class FaceShape(object):
 		#Importing required libraries
 		import numpy as np
 		from mayavi import mlab
+		#import brewer2mpl
+		
+		#if colortype == 'RdBu':
+		#	colortype = brewer2mpl.get_map('RdBu', 'diverging', 8, reverse=True).mpl_colormap
 
 		#Setting offscreen rendering, figure, and X,Y,Z objects
 		mlab.options.offscreen = True #True or False
@@ -161,6 +165,28 @@ class FaceShape(object):
 		screenshot[ np.all(screenshot == 1, axis=2) ] = 0 
 		mlab.close()
 		return screenshot
+	
+	def paste_screenshot(self, ax, z = 0.05, pos = (0,0), prof = 0, colorm = None, colort = 'RdBu'):
+		'''
+		Paste screenshot of rendered 3D Face
+		Usage
+		Input:
+			- ax: axis to paste the screenshot
+			- z: zoom level
+			- pos: position in the axis
+			- prof: whether to take the screenshot from frontal, midway, or profile (0/1/2)
+			- colorm: the colormap to be applied to the 3D surface to the scalar argument
+			- colort: the colormap type
+		'''
+		#Importing required libraries
+		from matplotlib.offsetbox import AnnotationBbox, OffsetImage
+		import numpy as np
+		#import matplotlib.pyplot as plt
+		
+		img   = self.take_screenshot(profile = prof, colormap = colorm, colortype = colort)
+		image = OffsetImage(img, zoom = z)
+		ab = AnnotationBbox(image, pos, xycoords='data', frameon=False)
+		ax.add_artist(ab)
 
 	def view_3d(self):
 		'''
