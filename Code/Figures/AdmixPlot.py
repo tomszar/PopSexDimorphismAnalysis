@@ -121,7 +121,7 @@ def plot_admix(Qfiles, filename="plot.png", popfile=None, sort_by_k=None, font_s
 				else:
 					bottom_stack = None
 				ax.bar(ind, this_stack, bottom = bottom_stack, width = width) 
-				plt.axis('off')
+				ax.axis('off')
 				ax.autoscale(tight=True)
 				
 			if i == 0 and popfile is not None:
@@ -157,7 +157,7 @@ def plot_admix(Qfiles, filename="plot.png", popfile=None, sort_by_k=None, font_s
 			else:
 				bottom_stack = None
 			ax.bar(ind, this_stack, bottom = bottom_stack,width = width)
-			plt.axis('off')
+			ax.axis('off')
 			ax.autoscale(tight=True)
 		
 		#Annotating number of ks
@@ -176,7 +176,7 @@ def plot_admix(Qfiles, filename="plot.png", popfile=None, sort_by_k=None, font_s
 	#return(fig, Qfile_sort_indices)
 	
 	
-def plot_admixh(Qfiles, ax, popfile=None, sort_by_k=None):
+def plot_admix2(Qfiles, ax, popfile=None, sort_by_k=None, horizontal=True):
 	'''
 	Function to plot admixture files in horizontal bars. Qfiles can be either a list of pandas Dataframes containing the Q proportions or a single file
 	Usage
@@ -208,7 +208,10 @@ def plot_admixh(Qfiles, ax, popfile=None, sort_by_k=None):
 			left_stack = Qfile_toplot.iloc[:,0:i].sum(axis=1)
 		else:
 			left_stack = None
-		ax.barh(ind, this_stack, left = left_stack, height = width)
-		plt.axis('off')
+		if horizontal==True:
+			ax.barh(ind, this_stack, left = left_stack, height = width)
+		else:
+			ax.bar(ind, this_stack, bottom = left_stack, width = width)
+		ax.axis('off')
 		ax.autoscale(tight=True)
-		
+

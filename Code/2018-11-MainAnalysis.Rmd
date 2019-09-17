@@ -63,9 +63,16 @@ setwd(paste(path, "/DataBases/Genotypes/FineStructure", sep = ""))
 treexml <- xmlTreeParse("total_fs_linked.tree.xml") ## read the tree as xml format
 ttree   <- extractTree(treexml) ## extract the tree into ape's phylo format
 ## Will will instead remove "perfect" node labels
+
 ttree$node.label[ttree$node.label=="1"] <- ""
-ttree$node.label[ttree$node.label!=""] <- format(as.numeric(ttree$node.label[ttree$node.label!=""]),digits=2)
+#To remove inner node values
+ttree$node.label[ttree$node.label!=""] <- ""
+format(as.numeric(ttree$node.label[ttree$node.label!=""]),digits=2)
+#To remove inner node values
+
 tdend <- myapetodend(ttree,factor=1) # convert to dendrogram format
+
+tdend %>% set("labels_cex", 0.1) %>% plot()
 
 #Get number of IDs per pop
 mapstate     <- extractValue(treexml,"Pop") # map state as a finestructure clustering
@@ -105,10 +112,12 @@ colnames(tot_samples)[length(tot_samples)] <- c("cluster_initial")
 We'll export the truncated dendrogram to newick format for later use
 
 ```{r export tree}
-tree_cut <- as.phylo(tdend_cut)
+tree_cut   <- as.phylo(tdend_cut)
+tree_total <- as.phylo(tdend)
 plot(tree_cut)
 setwd(paste(path, "/Results", sep = ""))
 write.tree(phy=tree_cut, file="tree_cut.newick")
+write.tree(phy=tree_total, file="tree_total.newick")
 ```
 
 ## Analysis 

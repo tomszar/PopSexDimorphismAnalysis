@@ -81,12 +81,14 @@ run_vector_change <- function(y.mat, covs, x.mat.red, x.mat.full, permute=9999){
 
   #Angles
   obs.angle <- matrix(0, nrow = ngroups * (ngroups-1) / 2, ncol = 1)
+  obs.sim   <- matrix(0, nrow = ngroups * (ngroups-1) / 2, ncol = 1)
   row = 1
   for (i in 1:ngroups){
     t = i + 1
     while (t <= ngroups){
       obs.angle[row,1] <- acos(t((obs.vect[i,]) / obs.d[i,1]) %*% ((obs.vect[t,])/obs.d[t,1]))
       obs.angle[row,1] <- obs.angle[row,1]*180/pi # This step is only necessary to convert radians to degrees
+      obs.sim[row,1] <- (obs.vect[i,] %*% obs.vect[t,]) / (obs.d[i,1] * obs.d[t,1])
       t = t + 1
       row = row + 1
     }
@@ -106,6 +108,9 @@ run_vector_change <- function(y.mat, covs, x.mat.red, x.mat.full, permute=9999){
   
   dist.angle <- matrix(0, nrow = (permute + 1), ncol = ngroups * (ngroups-1) / 2)
   dist.angle[1,] <- obs.angle # Observed values are first random values
+
+  dist.sim <- matrix(0, nrow = (permute + 1), ncol = ngroups * (ngroups-1) / 2)
+  dist.sim[1,] <- obs.sim # Observed values are first random values
   
   # In addition to saving random values, it is wise to save the outcome of comparisons
   # of observed and random values.
@@ -165,24 +170,27 @@ run_vector_change <- function(y.mat, covs, x.mat.red, x.mat.full, permute=9999){
       }
     }
     
-    #Angles
+    #Angles and sim
     rand.angle <- matrix(0, nrow = ngroups * (ngroups-1) / 2, ncol = 1)
+    rand.sim   <- matrix(0, nrow = ngroups * (ngroups-1) / 2, ncol = 1)
     row = 1
     for (l in 1:ngroups){
       t = l + 1
       while (t <= ngroups){
         rand.angle[row,1] <- acos(t((rand.vect[l,]) / rand.d[l,1]) %*% ((rand.vect[t,])/rand.d[t,1]))
         rand.angle[row,1] <- rand.angle[row,1]*180/pi # This step is only necessary to convert radians to degrees
+        rand.sim[row,1] <- (rand.vect[l,] %*% rand.vect[t,]) / (rand.d[l,1] * rand.d[t,1])
         t = t + 1
         row = row + 1
       }
     }
-    
+ 
     # Append distributions
     
     dist.d[i+1, ] <- rand.d
     dist.contrast[i+1,] <- rand.contrast
     dist.angle[i+1,]    <- rand.angle
+    dist.sim[i+1,]      <- rand.sim
     
     aa <- ifelse(rand.contrast>=obs.contrast,1,0)
     bb <- ifelse(rand.angle>=obs.angle,1,0)
@@ -220,11 +228,12 @@ run_vector_change <- function(y.mat, covs, x.mat.red, x.mat.full, permute=9999){
   ds    <- paste("d", 1:ncol(dist.d), sep = "")
   diffs <- paste("abs_diff", 1:ncol(dist.contrast), sep = "")
   angs  <- paste("angle", 1:ncol(dist.angle), sep = "")
-  out.head <- c(ds, diffs, angs)
+  sims  <- paste("sim", 1:ncol(dist.sim), sep = "")
+  out.head <- c(ds, diffs, angs, sims)
   iter <- array(1:permute)
   iter.lab <- "observed"
   iter.lab <- append(iter.lab,iter)
-  out.mat  <- cbind(dist.d, dist.contrast, dist.angle)
+  out.mat  <- cbind(dist.d, dist.contrast, dist.angle, dist.sim)
   colnames(out.mat) <- out.head
   rownames(out.mat) <- iter.lab
   return(out.mat)

@@ -69,34 +69,89 @@ We'll generate the faces of male and females in the total sample
 
 ```{r}
 #Exaggerated faces
-ex = 1.5
+ex = 1
 
 #Separating datasets
 Y <- tot_samples %>% select(starts_with("PC"))
 X <- tot_samples %>% select(Age, BMI, Height, Sex)
 X[,1:3] <- scale(X[,1:3])
 
+#Getting coefficients
 fit <- lm(as.matrix(Y) ~ Age + BMI + Height + Sex, data = X)
 avg_female <- fit$coefficients[1,] 
 avg_male   <- fit$coefficients[1,] + fit$coefficients[5,]
-avg_female_red <- avg_female
-avg_female_red[6:13] <- 0
 
-avg_male_red <- avg_male
-avg_male_red[6:13] <- 0
+nrows = 13*2
+avg_faces <- data.frame(matrix(0, nrow = nrows, ncol = 13))
+avg_faces[25,] <- avg_female
+avg_faces[26,] <- avg_male
 
-avg_faces <- rbind(avg_female, avg_male, avg_female_red, avg_male_red) * ex
+#Reducing the number of PCs, from 1 to 12
+row = 1
+for(i in 1:12){
+  avg_faces[row,1:i] <- avg_female[1:i]
+  row = row + 1
+  avg_faces[row,1:i] <- avg_male[1:i]
+  row = row + 1
+}
 
-new_means <- matrix(0, nrow = 4, ncol = dim(eigenvec)[1])
+avg_faces <- avg_faces * ex
+
+new_means <- matrix(0, nrow = nrows, ncol = dim(eigenvec)[1])
 for(i in 1:nrow(new_means)){
   new_means[i,] <- t(as.matrix(means))
 }
 
-avg_landmarks <- (avg_faces %*% t(as.matrix(eigenvec)) ) + new_means
+avg_landmarks <- (as.matrix(avg_faces) %*% t(as.matrix(eigenvec)) ) + new_means
 
 #Saving dataset
 setwd(paste(path, "/Results/Landmarks", sep = ""))
 write_csv(as.data.frame(avg_landmarks), "avg_landmarks.csv", col_names = FALSE)
+
+```
+
+Here we'll generate the faces of male and female for the 3 final branches, including the common patterns and their difference
+
+```{r sex dimorphism}
+#Exaggerated faces
+ex = 1
+
+#Separating datasets
+Y <- tot_samples %>% select(starts_with("PC"))
+X <- tot_samples %>% select(Age, BMI, Height, Sex, cluster_final)
+X[,1:3] <- scale(X[,1:3])
+
+#Getting coefficients
+fit <- lm(as.matrix(Y) ~ Age + BMI + Height + Sex * as.factor(cluster_final), data = X)
+
+x_ls <- matrix(c(1, 0, 0, 0, 0, 0, 0, 0, 0, 
+                 1, 0, 0, 0, 1, 0, 0, 0, 0,
+                 1, 0, 0, 0, 0, 1, 0, 0, 0,
+                 1, 0, 0, 0, 1, 1, 0, 1, 0,
+                 1, 0, 0, 0, 0, 0, 1, 0, 0,
+                 1, 0, 0, 0, 1, 0, 1, 0, 1), nrow=6, byrow = T)
+
+obs_ls <- x_ls %*% as.matrix(fit$coefficients)
+obs_ls <- obs_ls * ex
+
+obs_ls <- rbind(obs_ls ,(obs_ls[1,] + obs_ls[3,] + obs_ls[5,]) /3)
+obs_ls <- rbind(obs_ls, (obs_ls[2,] + obs_ls[4,] + obs_ls[6,]) /3)
+
+for(i in seq(1,6,2)){
+  obs_ls <- rbind(obs_ls, ( obs_ls[i,]  - obs_ls[7,]) )
+  obs_ls <- rbind(obs_ls, ( obs_ls[i+1,]  - obs_ls[8,]) )
+}
+
+new_means <- matrix(0, nrow = nrow(obs_ls), ncol = dim(eigenvec)[1])
+for(i in 1:nrow(new_means)){
+  new_means[i,] <- t(as.matrix(means))
+}
+
+sex_landmarks <- (as.matrix(obs_ls) %*% t(as.matrix(eigenvec)) ) + new_means
+
+#Saving dataset
+setwd(paste(path, "/Results/Landmarks", sep = ""))
+write_csv(as.data.frame(sex_landmarks), "sex_landmarks.csv", col_names = FALSE)
 
 ```
 
